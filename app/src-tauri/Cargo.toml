@@ -1,0 +1,42 @@
+[workspace]
+members = ["crates/envhive-core", "crates/envhive-toolkit", "crates/envhive-manager", "crates/envhive-cli"]
+resolver = "2"
+
+[package]
+name = "envhive"
+version = "0.1.0"
+description = "蜂巢 EnvHive — 多语言运行时与环境配置管理"
+edition = "2021"
+
+[lib]
+name = "envhive_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+envhive-core = { path = "crates/envhive-core" }
+envhive-toolkit = { path = "crates/envhive-toolkit" }
+envhive-manager = { path = "crates/envhive-manager" }
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-single-instance = "2"
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
+tauri-plugin-opener = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+reqwest = { version = "0.12", features = ["json", "stream", "blocking"] }
+tracing = "0.1"
+dirs = "5"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = [
+  "Win32_Foundation",
+  "Win32_Security",
+  "Win32_System_IO",
+  "Win32_System_Ioctl",
+  "Win32_System_Registry",
+  "Win32_UI_WindowsAndMessaging",
+  "Win32_Storage_FileSystem",
+] }

@@ -1,0 +1,55 @@
+/* ============================================================
+   EnvHive 全局基座样式（Vue 3 + Naive UI 版本）
+   整体布局由 Naive UI n-layout 体系接管（见 App.vue / Sidebar.vue）；
+   此处仅保留 reset、字体、通用工具类与壳层通知条样式。
+   主色统一：品牌紫 #534ab7（见 App.vue themeOverrides）
+   ============================================================ */
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC",
+    "Microsoft YaHei", sans-serif;
+  background: #f6f7f9;
+  color: #1f2329;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------- 通用工具类 ---------- */
+.mono {
+  font-family: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+}
+
+.muted {
+  color: #6b7280;
+}
+
+.section {
+  width: 100%;
+}
+
+/* ---------- 滚动条（浅色） ---------- */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-thumb {
+  background: #d3d6db;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #b9bdc4;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
