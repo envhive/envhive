@@ -1,0 +1,12 @@
+<svg class="icon" viewBox="0 0 128 128" version="1.1" xmlns="http://www.w3.org/2000/svg"
+     width="200" height="200"> 
+    <!-- 微软四色密排四格六边形：上红 | 中绿 / 左下蓝 | 右下黄（相互共享边） -->
+    <path d="M27.3 7.36 L23.65 13.68 L16.35 13.68 L12.7 7.36 L16.35 1.04 L23.65 1.04 Z"
+          fill="#7FBA00" stroke="#5E421E" stroke-width="0.6" stroke-linejoin="round"/>
+    <path d="M27.3 20 L23.65 26.32 L16.35 26.32 L12.7 20 L16.35 13.68 L23.65 13.68 Z"
+          fill="#F25022" stroke="#5E421E" stroke-width="0.6" stroke-linejoin="round"/>
+    <path d="M16.35 26.32 L12.7 32.64 L5.4 32.64 L1.75 26.32 L5.4 20 L12.7 20 Z"
+          fill="#00A4EF" stroke="#5E421E" stroke-width="0.6" stroke-linejoin="round"/>
+    <path d="M38.25 26.32 L34.6 32.64 L27.3 32.64 L23.65 26.32 L27.3 20 L34.6 20 Z"
+          fill="#FFB900" stroke="#5E421E" stroke-width="0.6" stroke-linejoin="round"/>
+</svg>

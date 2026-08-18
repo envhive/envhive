@@ -1,0 +1,93 @@
+{
+  "schemaVersion": 2,
+  "plugins": [
+    {
+      "name": "go",
+      "version": "1.0.0",
+      "type": "lua",
+      "format": "zip",
+      "description": "Go（language）",
+      "homepage": "https://go.dev",
+      "downloadUrl": "zip/go.zip",
+      "sha256": "cf6bfb6df2f62c51e32ca162291a16dbcd499a63c6c76787fccbd7c05e738600",
+      "size": 2922
+    },
+    {
+      "name": "java",
+      "version": "1.0.0",
+      "type": "lua",
+      "format": "zip",
+      "description": "Java（language）",
+      "homepage": "https://adoptium.net",
+      "downloadUrl": "zip/java.zip",
+      "sha256": "5165f266400a7b246c55d641a45598a152b141e57bd4e2e248670550820cdc90",
+      "size": 4236
+    },
+    {
+      "name": "lua",
+      "version": "1.0.0",
+      "type": "lua",
+      "format": "zip",
+      "description": "Lua（language）",
+      "homepage": "https://www.lua.org",
+      "downloadUrl": "zip/lua.zip",
+      "sha256": "01ba512acfe0dce3d0d80a12357b2da00943cfbd38f2d69d4af9624bfc2e031b",
+      "size": 3173
+    },
+    {
+      "name": "maven",
+      "version": "1.0.0",
+      "type": "lua",
+      "format": "zip",
+      "description": "Maven（build）",
+      "homepage": "https://maven.apache.org",
+      "downloadUrl": "zip/maven.zip",
+      "sha256": "fa4725dd304a9cb2e1543f99c2623fbed807e112f2beffd969f5723cee4fff5c",
+      "size": 11838
+    },
+    {
+      "name": "nodejs",
+      "version": "1.0.0",
+      "type": "lua",
+      "format": "zip",
+      "description": "Node.js（language）",
+      "homepage": "https://nodejs.org",
+      "downloadUrl": "zip/nodejs.zip",
+      "sha256": "07433fdaf6ba04b2af0cd93d37ebbbffe108b71afd757e4e8a31a48f7fa24238",
+      "size": 2350
+    },
+    {
+      "name": "python",
+      "version": "1.0.0",
+      "type": "lua",
+      "format": "zip",
+      "description": "Python（language）",
+      "homepage": "https://www.python.org",
+      "downloadUrl": "zip/python.zip",
+      "sha256": "ea9e95ae3e32ee9b1d840f37c4b9f8e066e1e76982243004b10d3be72a9f0892",
+      "size": 3333
+    },
+    {
+      "name": "rust",
+      "version": "1.1.0",
+      "type": "lua",
+      "format": "zip",
+      "description": "Rust（language）",
+      "homepage": "https://www.rust-lang.org",
+      "downloadUrl": "zip/rust.zip",
+      "sha256": "bda6890ba20d8a322b8d57f6b922ded025941809e93ae65225c1a08a25960d49",
+      "size": 6496
+    },
+    {
+      "name": "tomcat",
+      "version": "1.0.0",
+      "type": "lua",
+      "format": "zip",
+      "description": "Tomcat（server）",
+      "homepage": "https://tomcat.apache.org",
+      "downloadUrl": "zip/tomcat.zip",
+      "sha256": "c96a671ce5b60092af38c1f62134dfa671d4fadcf77696eb29427aee6f8827de",
+      "size": 4582
+    }
+  ]
+}

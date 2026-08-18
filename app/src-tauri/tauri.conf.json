@@ -1,0 +1,48 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "EnvHive",
+  "version": "0.1.0",
+  "identifier": "com.envhive.desktop",
+  "build": {
+    "beforeDevCommand": "cargo build --release -p envhive-cli --manifest-path src-tauri/Cargo.toml && node scripts/copy-cli.mjs && npm run dev",
+    "devUrl": "http://localhost:1420",
+    "beforeBuildCommand": "npm run build && cargo build --release -p envhive-cli --manifest-path src-tauri/Cargo.toml && node scripts/copy-cli.mjs",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "蜂巢 EnvHive",
+        "width": 1080,
+        "height": 720,
+        "minWidth": 880,
+        "minHeight": 600,
+        "center": true
+      }
+    ],
+    "security": { "csp": null }
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "externalBin": ["binaries/envhive-cli"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.ico",
+      "icons/icon.png"
+    ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDkwQ0I0M0IwQkNERjczRTAKUldUZ2M5KzhzRVBMa0ZEWkk3N2gyaEprMU9CSEpxc05oK21OMTJEWWJ6ZTdZWUJLREJiSG43K3QK",
+      "endpoints": [
+        "https://example.com/updates/latest.json"
+      ],
+      "windows": {
+        "installMode": "passive"
+      }
+    }
+  }
+}
