@@ -7,7 +7,8 @@
 //!   在指定（默认当前）项目目录生成 `.envhive.toml` 配置文件
 //! - `envhive-cli load [--shell <bash|zsh|fish|powershell|cmd>] [--dir <path>] [--json]`
 //!   从当前目录向上定位配置 → 计算合并 env → 输出对应 shell 语法的注入脚本
-//! - `envhive-cli tui`   交互式终端界面（ratatui）：工具安装 / 切换 / 插件 / 队列进度
+//! - `envhive-cli tui`   交互式终端界面（ratatui）：工具 / 插件市场 / 队列 /
+//!   镜像源与下载加速 / 统计 / 设置（代理、缓存、仓库）/ 关于
 //! - `envhive-cli install <name> <version>`  安装工具（行内进度条）
 //! - `envhive-cli switch <name> <version>`   切换全局版本
 //! - `envhive-cli unuse <name>`              解除全局使用
@@ -104,7 +105,7 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
-    /// 交互式终端界面（ratatui）：工具安装 / 切换 / 插件管理 / 队列进度
+    /// 交互式终端界面（ratatui）：工具 / 插件市场 / 队列 / 镜像 / 统计 / 设置 / 关于
     Tui,
     /// 安装工具（非交互，终端行内显示下载进度）
     Install {
