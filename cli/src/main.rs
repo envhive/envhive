@@ -1,25 +1,39 @@
-//! envhive-cli —— 项目配置生成与终端环境注入
+//! envhive-cli —— 独立工具（零 Tauri 依赖）
 //!
-//! 与桌面应用共存的双二进制：CLI 复用 envhive-core / envhive-toolkit（零 Tauri 依赖）。
+//! 与桌面应用共存的双二进制：CLI 复用 envhive-core / envhive-toolkit / envhive-manager。
 //!
 //! 命令：
 //! - `envhive-cli init [--dir <path>] [--force] [--tool <name>=<version>]...`
 //!   在指定（默认当前）项目目录生成 `.envhive.toml` 配置文件
 //! - `envhive-cli load [--shell <bash|zsh|fish|powershell|cmd>] [--dir <path>] [--json]`
 //!   从当前目录向上定位配置 → 计算合并 env → 输出对应 shell 语法的注入脚本
-//!   （bash/zsh: `eval "$(envhive-cli load)"`；powershell: `envhive-cli load | Out-String | Invoke-Expression`；
-//!    cmd: `envhive-cli load > %TEMP%\p.cmd && call %TEMP%\p.cmd`）
+//! - `envhive-cli tui`   交互式终端界面（ratatui）：工具安装 / 切换 / 插件 / 队列进度
+//! - `envhive-cli install <name> <version>`  安装工具（行内进度条）
+//! - `envhive-cli switch <name> <version>`   切换全局版本
+//! - `envhive-cli unuse <name>`              解除全局使用
+//! - `envhive-cli list`                      列出已安装工具
+
+mod sink;
+mod tui;
 
 use std::path::PathBuf;
+use std::sync::Arc;
 
 use clap::{Parser, Subcommand};
+use tokio::sync::mpsc;
 
 use envhive_core::config::AppConfig;
 use envhive_core::error::Result;
 use envhive_core::pathmeta;
 use envhive_core::toml_chain::{ConfigChain, ScopeConfig, ToolValue};
+use envhive_manager::events::{DownloadProgress, EventSink, ManagerEvent, NullSink};
+use envhive_manager::manager::EnvHiveManager;
+use envhive_manager::queue::QueueManager;
 use envhive_toolkit::env_resolver::{resolve_envs, ToolLookup};
 use envhive_toolkit::shell::{render, ShellKind};
+
+use crate::sink::{ChannelSink, UiSink};
+use crate::tui::UiMsg;
 
 /// 数据根目录：与桌面端一致（`~/.envhive`）
 fn data_root() -> PathBuf {
@@ -33,8 +47,32 @@ fn dirs_home() -> PathBuf {
         .unwrap_or_else(|_| PathBuf::from("."))
 }
 
+/// 构建 HTTP 客户端（与桌面一致：代理第 1 层）
+fn build_http_client(cfg: &AppConfig) -> reqwest::Client {
+    let mut builder = reqwest::Client::builder()
+        .user_agent("envhive-cli/0.1.0")
+        .connect_timeout(std::time::Duration::from_secs(15));
+    if cfg.proxy.enable {
+        if let Some(url) = &cfg.proxy.url {
+            if let Ok(proxy) = reqwest::Proxy::all(url) {
+                builder = builder.proxy(proxy);
+            }
+        }
+    }
+    builder.build().unwrap_or_default()
+}
+
+/// 构造 EnvHiveManager（注入事件接收器）
+fn build_manager(sink: Arc<dyn EventSink>) -> EnvHiveManager {
+    let root = data_root();
+    let config = AppConfig::load(&root.join("config.yaml")).unwrap_or_default();
+    let paths = pathmeta::from_root(&root);
+    let client = build_http_client(&config);
+    EnvHiveManager::with_event_sink(config, paths, client, sink)
+}
+
 #[derive(Parser)]
-#[command(name = "envhive-cli", version, about = "蜂巢 EnvHive CLI：项目配置生成与终端环境注入")]
+#[command(name = "envhive-cli", version, about = "蜂巢 EnvHive CLI：项目配置 / 终端环境注入 / 交互式工具管理")]
 struct Cli {
     #[command(subcommand)]
     command: Command,
@@ -66,6 +104,29 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// 交互式终端界面（ratatui）：工具安装 / 切换 / 插件管理 / 队列进度
+    Tui,
+    /// 安装工具（非交互，终端行内显示下载进度）
+    Install {
+        /// 工具名（如 nodejs）
+        name: String,
+        /// 版本（精确或标签，如 22.11.0 / lts）
+        version: String,
+    },
+    /// 切换全局默认版本（需已安装）
+    Switch {
+        /// 工具名（如 nodejs）
+        name: String,
+        /// 目标版本（精确或标签）
+        version: String,
+    },
+    /// 解除全局使用（不卸载）
+    Unuse {
+        /// 工具名（如 nodejs）
+        name: String,
+    },
+    /// 列出已安装工具
+    List,
 }
 
 /// `--tool nodejs=22.11.0` / `java=21,vendor=openjdk`
@@ -113,21 +174,21 @@ fn parse_tool_value(s: &str) -> Result<(String, ToolValue)> {
     Ok((name, value))
 }
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let cli = Cli::parse();
-    match cli.command {
-        Command::Init { dir, force, tools } => {
-            if let Err(e) = cmd_init(dir, force, &tools) {
-                eprintln!("错误: {e}");
-                std::process::exit(1);
-            }
-        }
-        Command::Load { shell, dir, json } => {
-            if let Err(e) = cmd_load(shell.as_deref(), dir, json) {
-                eprintln!("错误: {e}");
-                std::process::exit(1);
-            }
-        }
+    let result = match cli.command {
+        Command::Init { dir, force, tools } => cmd_init(dir, force, &tools),
+        Command::Load { shell, dir, json } => cmd_load(shell.as_deref(), dir, json),
+        Command::Tui => cmd_tui().await,
+        Command::Install { name, version } => cmd_install(&name, &version).await,
+        Command::Switch { name, version } => cmd_switch(&name, &version).await,
+        Command::Unuse { name } => cmd_unuse(&name),
+        Command::List => cmd_list(),
+    };
+    if let Err(e) = result {
+        eprintln!("错误: {e}");
+        std::process::exit(1);
     }
 }
 
@@ -203,6 +264,89 @@ fn cmd_load(shell_arg: Option<&str>, dir: Option<PathBuf>, json: bool) -> Result
     Ok(())
 }
 
+/// tui：交互式终端界面（ratatui）
+async fn cmd_tui() -> Result<()> {
+    let (tx, rx) = mpsc::unbounded_channel::<UiMsg>();
+    // UiSink 把 manager 事件包装为 UiMsg::Manager 投递到 UI 通道
+    let tx_manager = tx.clone();
+    let manager = Arc::new(build_manager(Arc::new(UiSink(tx_manager))));
+    let queue = Arc::new(QueueManager::with_event_sink(Arc::new(UiSink(tx.clone()))));
+    crate::tui::run_tui(manager, queue, tx, rx).await
+}
+
+/// install：安装工具（行内进度条）
+async fn cmd_install(name: &str, version: &str) -> Result<()> {
+    let (tx, mut rx) = mpsc::unbounded_channel::<ManagerEvent>();
+    let manager = Arc::new(build_manager(Arc::new(ChannelSink(tx))));
+
+    let mgr = manager.clone();
+    let name_c = name.to_string();
+    let ver_c = version.to_string();
+    let mut handle = tokio::spawn(async move { mgr.install_tool(&name_c, &ver_c, None, None).await });
+
+    // 消费进度事件 → 行内刷新
+    loop {
+        tokio::select! {
+            evt = rx.recv() => {
+                match evt {
+                    Some(ManagerEvent::Progress(p)) => render_inline_progress(&p),
+                    Some(ManagerEvent::Error { message, .. }) => {
+                        eprintln!("\n错误: {message}");
+                    }
+                    Some(ManagerEvent::InstallStatus(s)) => {
+                        if let Some(d) = &s.detail {
+                            render_inline_stage(&s.tool, &s.version, d);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            res = &mut handle => {
+                let result = res.map_err(|e| {
+                    envhive_core::error::EnvHiveError::new(
+                        envhive_core::error::EnvHiveErrorKind::Internal,
+                        format!("安装任务异常: {e}"),
+                    )
+                })??;
+                println!();
+                println!("✓ {} {}（{}）", result.tool, result.version, result.path);
+                return Ok(());
+            }
+        }
+    }
+}
+
+/// switch：切换全局默认版本
+async fn cmd_switch(name: &str, version: &str) -> Result<()> {
+    let manager = build_manager(Arc::new(NullSink));
+    let r = manager.switch_global(name, version).await?;
+    println!("✓ {}", r.message);
+    Ok(())
+}
+
+/// unuse：解除全局使用
+fn cmd_unuse(name: &str) -> Result<()> {
+    let manager = build_manager(Arc::new(NullSink));
+    manager.unuse_global(name)?;
+    println!("✓ {name} 已解除全局使用");
+    Ok(())
+}
+
+/// list：列出已安装工具
+fn cmd_list() -> Result<()> {
+    let manager = build_manager(Arc::new(NullSink));
+    let infos = manager.list_installed();
+    if infos.is_empty() {
+        println!("（未安装任何工具）");
+        return Ok(());
+    }
+    for i in infos {
+        let mark = if i.is_current { "*" } else { " " };
+        println!("{mark} {:<12} {:<14} {}", i.tool, i.version, i.path);
+    }
+    Ok(())
+}
+
 /// --json 输出：环境变量表 + PATH 条目
 fn output_json(envs: &envhive_core::env::Envs) {
     let mut vars: Vec<serde_json::Value> = envs
@@ -223,4 +367,39 @@ fn output_json(envs: &envhive_core::env::Envs) {
         "vars": vars,
     });
     println!("{}", serde_json::to_string_pretty(&out).unwrap_or_default());
+}
+
+/// 行内进度条（crossterm）：`[=====>     ] 45.0% 12.30 MB/s 下载中`
+fn render_inline_progress(p: &DownloadProgress) {
+    use std::io::Write;
+    let width: usize = 36;
+    let filled = ((p.percent / 100.0) * width as f32).round() as usize;
+    let bar: String = format!(
+        "[{}{}] {:>5.1}% {:>6.2} MB/s {}",
+        "=".repeat(filled),
+        " ".repeat(width.saturating_sub(filled)),
+        p.percent,
+        p.speed_mbps,
+        stage_label(p.stage)
+    );
+    print!("\r{:<16} {:<12} {bar}", p.tool, p.version);
+    let _ = std::io::stdout().flush();
+}
+
+fn render_inline_stage(tool: &str, version: &str, detail: &str) {
+    use std::io::Write;
+    print!("\r{:<16} {:<12} {detail:<40}", tool, version);
+    let _ = std::io::stdout().flush();
+}
+
+fn stage_label(s: envhive_manager::events::DownloadStage) -> &'static str {
+    use envhive_manager::events::DownloadStage as S;
+    match s {
+        S::Resolving => "解析",
+        S::Downloading => "下载中",
+        S::Verifying => "校验",
+        S::Extracting => "解压安装",
+        S::Done => "完成",
+        S::Failed => "失败",
+    }
 }

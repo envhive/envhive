@@ -10,3 +10,8 @@ src-tauri/binaries
 
 # OS
 .DS_Store
+
+# Rust build
+target/
+crates/*/target/
+cli/target/

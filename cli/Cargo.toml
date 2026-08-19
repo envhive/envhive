@@ -1,0 +1,24 @@
+[package]
+name = "envhive-cli"
+version = "0.1.0"
+description = "蜂巢 EnvHive CLI：项目配置生成 / 终端环境注入 / 交互式工具管理（TUI）"
+edition = "2021"
+
+[[bin]]
+name = "envhive-cli"
+path = "src/main.rs"
+
+[dependencies]
+envhive-core = { path = "../crates/envhive-core" }
+envhive-toolkit = { path = "../crates/envhive-toolkit" }
+envhive-manager = { path = "../crates/envhive-manager" }
+clap = { version = "4", features = ["derive"] }
+serde_json = "1"
+tracing = "0.1"
+# TUI 交互
+ratatui = "0.30"
+crossterm = { version = "0.28", features = ["event-stream"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
+tokio-stream = "0.1"
+# HTTP（构造 EnvHiveManager）
+reqwest = { version = "0.12", features = ["json", "stream", "blocking"] }
