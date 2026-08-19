@@ -8,6 +8,14 @@ use crossterm::event::KeyCode;
 use super::*;
 
 impl TuiApp {
+    /// 切换到指定 Tab（键盘 1-7 与鼠标点击共用；相同 Tab 不重复触发清屏）
+    pub(crate) fn switch_tab(&mut self, t: usize) {
+        if t < TAB_TITLES.len() && t != self.tab {
+            self.tab = t;
+            self.pending_clear = true;
+        }
+    }
+
     pub(crate) fn on_key(&mut self, code: KeyCode) {
         // 确认模态优先
         if self.confirm.is_some() {
@@ -21,13 +29,13 @@ impl TuiApp {
         }
         match code {
             KeyCode::Char('q') | KeyCode::Esc => self.quitting = true,
-            KeyCode::Char('1') => { self.tab = 0; self.pending_clear = true; }
-            KeyCode::Char('2') => { self.tab = 1; self.pending_clear = true; }
-            KeyCode::Char('3') => { self.tab = 2; self.pending_clear = true; }
-            KeyCode::Char('4') => { self.tab = 3; self.pending_clear = true; }
-            KeyCode::Char('5') => { self.tab = 4; self.pending_clear = true; }
-            KeyCode::Char('6') => { self.tab = 5; self.pending_clear = true; }
-            KeyCode::Char('7') => { self.tab = 6; self.pending_clear = true; }
+            KeyCode::Char('1') => self.switch_tab(0),
+            KeyCode::Char('2') => self.switch_tab(1),
+            KeyCode::Char('3') => self.switch_tab(2),
+            KeyCode::Char('4') => self.switch_tab(3),
+            KeyCode::Char('5') => self.switch_tab(4),
+            KeyCode::Char('6') => self.switch_tab(5),
+            KeyCode::Char('7') => self.switch_tab(6),
             KeyCode::Tab => self.on_tab(),
             KeyCode::Up => self.move_sel(-1),
             KeyCode::Down => self.move_sel(1),
@@ -100,7 +108,7 @@ impl TuiApp {
             }
             4 => self.focus_stats_versions = !self.focus_stats_versions,
             _ => {
-                self.tab = (self.tab + 1) % 7;
+                self.tab = (self.tab + 1) % TAB_TITLES.len();
                 self.pending_clear = true;
             }
         }

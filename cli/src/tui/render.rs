@@ -15,24 +15,15 @@ impl TuiApp {
             .constraints([Constraint::Length(3), Constraint::Min(0), Constraint::Length(3)])
             .split(area);
 
-        let tabs = vec![
-            Line::from(vec![
-                Span::styled(" 1工具 ", fmt::tab_style(self.tab == 0)),
-                Span::raw(" "),
-                Span::styled(" 2插件 ", fmt::tab_style(self.tab == 1)),
-                Span::raw(" "),
-                Span::styled(" 3队列 ", fmt::tab_style(self.tab == 2)),
-                Span::raw(" "),
-                Span::styled(" 4镜像 ", fmt::tab_style(self.tab == 3)),
-                Span::raw(" "),
-                Span::styled(" 5统计 ", fmt::tab_style(self.tab == 4)),
-                Span::raw(" "),
-                Span::styled(" 6设置 ", fmt::tab_style(self.tab == 5)),
-                Span::raw(" "),
-                Span::styled(" 7关于 ", fmt::tab_style(self.tab == 6)),
-                Span::raw(" "),
-            ]),
-        ];
+        // 标签统一来自 TAB_TITLES（与鼠标命中检测同源，避免坐标错位）
+        let mut tab_spans: Vec<Span> = Vec::new();
+        for (i, title) in TAB_TITLES.iter().enumerate() {
+            tab_spans.push(Span::styled(*title, fmt::tab_style(self.tab == i)));
+            if i + 1 < TAB_TITLES.len() {
+                tab_spans.push(Span::raw(" "));
+            }
+        }
+        let tabs = vec![Line::from(tab_spans)];
         f.render_widget(Tabs::new(tabs).select(self.tab).block(Block::default().borders(Borders::ALL).title("envhive-cli")), chunks[0]);
 
         // 内容区先整体清空再重画：不同 Tab 的布局（列数/行数）差异大，
@@ -88,13 +79,13 @@ impl TuiApp {
             None => (format!("{}", self.status), Color::Green),
         };
         let hint = match self.tab {
-            0 => "q 退出  1-7 切 Tab  ↑↓ 导航  Enter 操作  Tab 焦点",
-            1 => "m 本地/市场  空格 启停   i/Enter 安装   d/Del 删除   o 打开目录   r 刷新",
-            2 => "c 取消  x 清空终态",
-            3 => "m 源/加速  Enter 应用/切换  a 添加自定义  d/Del 删除自定义  r 刷新",
-            4 => "u 卸载  r 刷新  Tab 焦点",
-            5 => "空格 开关  e 编辑  a 添加仓库  d/Del 删除仓库  r 刷新",
-            _ => "全部功能一览",
+            0 => "q 退出  1-7/鼠标点 Tab  ↑↓ 导航  Enter 操作  Tab 焦点",
+            1 => "m 本地/市场  空格 启停   i/Enter 安装   d/Del 删除   o 打开目录   r 刷新  ·鼠标点Tab",
+            2 => "c 取消  x 清空终态  ·鼠标点Tab",
+            3 => "m 源/加速  Enter 应用/切换  a 添加自定义  d/Del 删除自定义  r 刷新  ·鼠标点Tab",
+            4 => "u 卸载  r 刷新  Tab 焦点  ·鼠标点Tab",
+            5 => "空格 开关  e 编辑  a 添加仓库  d/Del 删除仓库  r 刷新  ·鼠标点Tab",
+            _ => "全部功能一览  ·鼠标点Tab",
         };
         let line = Line::from(vec![
             Span::styled(text, Style::default().fg(color)),

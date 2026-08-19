@@ -45,29 +45,26 @@ impl TuiApp {
     }
 
     pub(crate) fn current_mirror_selected(&self) -> Option<String> {
-        let tools = self.mirror_sdk_tools();
-        let Some(t) = tools.get(self.mirror_idx) else { return None };
-        for m in t.mirrors.iter().flatten() {
-            if m.from == m.to {
-                continue;
-            }
-            if self.mirror_cfg.rules.get(&m.from) == Some(&m.to) {
-                return Some(m.name.clone());
-            }
-        }
-        None
+        self.mirror_sdk_tools()
+            .get(self.mirror_idx)
+            .and_then(|t| self.current_mirror_of(t))
     }
 
     pub(crate) fn refresh_mirror(&mut self) {
         let mgr = self.manager.clone();
-        self.mirror_cfg = mgr.config.lock().unwrap().download_mirror.clone();
-        for tool in self.mirror_tools.clone() {
-            if let Ok(st) = mgr.registry_state(&tool) {
+        // 只锁一次：同时取出下载镜像配置与自定义 registry（供下方 presets 复用）
+        let (download_mirror, customs) = {
+            let cfg = mgr.config.lock().unwrap();
+            (cfg.download_mirror.clone(), cfg.custom_registry.clone())
+        };
+        self.mirror_cfg = download_mirror;
+        // 直接迭代引用，避免整 Vec 克隆；仅 map 插入时克隆所需 String
+        for tool in &self.mirror_tools {
+            if let Ok(st) = mgr.registry_state(tool) {
                 self.mirror_states.insert(tool.clone(), st);
             }
-            let customs = mgr.config.lock().unwrap().custom_registry.clone();
-            let presets = presets_info(&tool, &customs);
-            self.mirror_presets.insert(tool, presets);
+            let presets = presets_info(tool, &customs);
+            self.mirror_presets.insert(tool.clone(), presets);
         }
         self.status = format!("镜像配置已刷新（{} 个工具）", self.mirror_tools.len());
     }

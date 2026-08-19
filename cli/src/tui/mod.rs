@@ -25,7 +25,9 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Duration;
 
-use crossterm::event::{Event, KeyEventKind};
+use crossterm::event::{Event, KeyEventKind, MouseButton, MouseEventKind};
+use ratatui::layout::{Constraint, Direction, Layout, Rect};
+use ratatui::text::Line;
 use tokio::sync::mpsc;
 use tokio_stream::StreamExt;
 
@@ -42,6 +44,11 @@ use envhive_toolkit::tool::ToolInfo;
 
 /// 镜像源管理涉及的工具（与桌面 NetworkPage 一致）
 const REGISTRY_TOOLS: &[&str] = &["npm", "pip", "cargo", "maven", "go", "docker", "nuget", "gem", "pub", "conda"];
+
+/// 顶部 Tab 栏标签（与 render 共用，保证鼠标命中检测与显示完全一致）
+pub(crate) const TAB_TITLES: &[&str] = &[
+    " 1工具 ", " 2插件 ", " 3队列 ", " 4镜像 ", " 5统计 ", " 6设置 ", " 7关于 ",
+];
 
 /// UI 消息：manager 事件 + 内部异步结果
 #[derive(Clone)]
@@ -200,7 +207,7 @@ impl TuiApp {
         };
         app.refresh_mirror();
         app.refresh_stats();
-        app.status = "就绪 · 1-7 切换 Tab，Tab 子视图焦点，q 退出".into();
+        app.status = "就绪 · 1-7/鼠标点击 切换 Tab，Tab 子视图焦点，q 退出".into();
         app
     }
 
@@ -223,6 +230,11 @@ impl TuiApp {
         rx: &mut mpsc::UnboundedReceiver<UiMsg>,
     ) -> Result<()> {
         let mut terminal = ratatui::init();
+        // 启用鼠标点击：左键点击顶部 Tab 栏即可切换（IDEA Terminal 等 Java 模拟终端可能不支持）
+        let _ = crossterm::execute!(
+            std::io::stdout(),
+            crossterm::event::EnableMouseCapture
+        );
         let mut stream = crossterm::event::EventStream::new();
         let mut tick = tokio::time::interval(Duration::from_millis(100));
         loop {
@@ -233,6 +245,17 @@ impl TuiApp {
                 evt = stream.next() => {
                     match evt {
                         Some(Ok(Event::Key(k))) if k.kind == KeyEventKind::Press => self.on_key(k.code),
+                        Some(Ok(Event::Mouse(m))) => {
+                            // 仅响应左键按下；坐标命中 Tab 栏则切换
+                            if matches!(m.kind, MouseEventKind::Down(MouseButton::Left)) {
+                                if let Ok(size) = terminal.size() {
+                                    let bar = TuiApp::tab_bar_rect(size.into());
+                                    if let Some(t) = TuiApp::tab_at(m.column, m.row, bar) {
+                                        self.switch_tab(t);
+                                    }
+                                }
+                            }
+                        }
                         Some(Ok(Event::Resize(..))) => {}
                         _ => {}
                     }
@@ -256,6 +279,11 @@ impl TuiApp {
             }
             terminal.draw(|f| self.render(f))?;
         }
+        // 退出前关闭鼠标捕获，恢复终端默认行为（否则鼠标选择/复制会失效）
+        let _ = crossterm::execute!(
+            std::io::stdout(),
+            crossterm::event::DisableMouseCapture
+        );
         ratatui::restore();
         Ok(())
     }
@@ -263,6 +291,36 @@ impl TuiApp {
     /// 供异步任务回投消息的 sender（与 run 的 rx 同通道）
     fn tx(&self) -> mpsc::UnboundedSender<UiMsg> {
         self.tx.clone()
+    }
+
+    /// 由终端尺寸推导顶部 Tab 栏 Rect（与 render 的纵向布局一致：3 / Min / 3）
+    fn tab_bar_rect(size: Rect) -> Rect {
+        Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([Constraint::Length(3), Constraint::Min(0), Constraint::Length(3)])
+            .split(size)[0]
+    }
+
+    /// 命中检测：给定终端坐标，返回落在哪个 Tab 标签上（仅 Tab 栏那一行）。
+    /// 与 render 用同一套 TAB_TITLES，坐标算法一致：内容区左移 1 列（左边框），
+    /// 标签绘制在 bar.y+1（带边框 Block 的首行内容）；标题行 bar.y 也一并接受（容错）。
+    pub(crate) fn tab_at(col: u16, row: u16, bar: Rect) -> Option<usize> {
+        let top = bar.y + 1;
+        if row != top && row != bar.y {
+            return None;
+        }
+        let mut x = bar.x + 1; // 跳过左边框
+        for (i, title) in TAB_TITLES.iter().enumerate() {
+            // Line::from(title).width() 按显示宽度计（CJK 计 2），与渲染一致
+            let w = Line::from(*title).width() as u16;
+            // 标签 + 其后分隔空格都算可点击，避免点空
+            let end = x + w + 1;
+            if col >= x && col < end {
+                return Some(i);
+            }
+            x = end;
+        }
+        None
     }
 
     /// 重拉工具列表（current / installed 变化后调用）。
