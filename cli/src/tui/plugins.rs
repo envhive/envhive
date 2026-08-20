@@ -74,7 +74,7 @@ impl TuiApp {
         });
     }
 
-    pub(crate) fn render_plugins(&self, f: &mut ratatui::Frame<'_>, area: Rect) {
+    pub(crate) fn render_plugins(&mut self, f: &mut ratatui::Frame<'_>, area: Rect) {
         if self.plugin_view == 1 {
             // 市场视图
             let items: Vec<ListItem> = self
@@ -108,6 +108,7 @@ impl TuiApp {
             let mut st = ListState::default();
             st.select(Some(self.plugin_idx));
             f.render_stateful_widget(list, area, &mut st);
+            self.click_lists.push((ClickTarget::PluginList, area));
             return;
         }
 
@@ -133,5 +134,6 @@ impl TuiApp {
         let mut st = ListState::default();
         st.select(Some(self.plugin_idx));
         f.render_stateful_widget(list, area, &mut st);
+        self.click_lists.push((ClickTarget::PluginList, area));
     }
 }

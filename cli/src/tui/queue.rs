@@ -18,7 +18,7 @@ impl TuiApp {
         }
     }
 
-    pub(crate) fn render_queue(&self, f: &mut ratatui::Frame<'_>, area: Rect) {
+    pub(crate) fn render_queue(&mut self, f: &mut ratatui::Frame<'_>, area: Rect) {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Length(4), Constraint::Min(0)])
@@ -79,5 +79,6 @@ impl TuiApp {
         let mut st = ListState::default();
         st.select(Some(self.task_idx));
         f.render_stateful_widget(list, chunks[1], &mut st);
+        self.click_lists.push((ClickTarget::TaskList, chunks[1]));
     }
 }

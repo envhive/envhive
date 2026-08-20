@@ -67,7 +67,7 @@ impl TuiApp {
         }
     }
 
-    pub(crate) fn render_tools(&self, f: &mut ratatui::Frame<'_>, area: Rect) {
+    pub(crate) fn render_tools(&mut self, f: &mut ratatui::Frame<'_>, area: Rect) {
         let chunks = Layout::default()
             .direction(Direction::Horizontal)
             .constraints([Constraint::Percentage(40), Constraint::Percentage(60)])
@@ -94,6 +94,7 @@ impl TuiApp {
         let mut st = ListState::default();
         st.select(Some(self.tool_idx));
         f.render_stateful_widget(list, chunks[0], &mut st);
+        self.click_lists.push((ClickTarget::ToolList, chunks[0]));
 
         // 右侧：版本列表
         let tool = self.tools.get(self.tool_idx).map(|t| t.name.clone()).unwrap_or_default();
@@ -133,5 +134,6 @@ impl TuiApp {
         let mut st = ListState::default();
         st.select(Some(self.ver_idx));
         f.render_stateful_widget(list, chunks[1], &mut st);
+        self.click_lists.push((ClickTarget::VersionList, chunks[1]));
     }
 }

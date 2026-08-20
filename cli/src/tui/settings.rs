@@ -117,7 +117,7 @@ impl TuiApp {
         self.status = "配置已刷新".into();
     }
 
-    pub(crate) fn render_settings(&self, f: &mut ratatui::Frame<'_>, area: Rect) {
+    pub(crate) fn render_settings(&mut self, f: &mut ratatui::Frame<'_>, area: Rect) {
         let rows: Vec<ListItem> = (0..self.settings_rows())
             .map(|i| {
                 let (label, value, color) = match self.setting_row_kind(i) {
@@ -131,7 +131,7 @@ impl TuiApp {
                         ("插件仓库".to_string(), value, Color::Cyan)
                     }
                 };
-                let mut spans = vec![Span::styled(format!("{:<18}", label), Style::default())];
+                let mut spans = vec![Span::styled(fmt::pad_cells(&label, 18), Style::default())];
                 if let SettingRowKind::RegistryEntry(_) = self.setting_row_kind(i) {
                     spans.push(Span::styled("  ", Style::default()));
                 }
@@ -146,5 +146,6 @@ impl TuiApp {
         let mut st = ListState::default();
         st.select(Some(self.settings_idx));
         f.render_stateful_widget(list, area, &mut st);
+        self.click_lists.push((ClickTarget::SettingList, area));
     }
 }

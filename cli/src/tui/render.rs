@@ -9,6 +9,8 @@ use super::*;
 
 impl TuiApp {
     pub(crate) fn render(&mut self, f: &mut ratatui::Frame<'_>) {
+        // 清空上一帧记录的可点击列表区域；各列表渲染方法会重新写入当前 Tab 的布局
+        self.click_lists.clear();
         let area = f.area();
         let chunks = Layout::default()
             .direction(Direction::Vertical)
@@ -16,15 +18,19 @@ impl TuiApp {
             .split(area);
 
         // 标签统一来自 TAB_TITLES（与鼠标命中检测同源，避免坐标错位）
+        // 先 Clear 标签栏：切换 Tab 时若不强制清屏，旧分隔符/标签字符会因布局变化残留，
+        // 表现为"某些 Tab 激活时显示 |、有些不显示"。Clear 以空格覆盖，彻底规避。
+        f.render_widget(Clear, chunks[0]);
         let mut tab_spans: Vec<Span> = Vec::new();
         for (i, title) in TAB_TITLES.iter().enumerate() {
             tab_spans.push(Span::styled(*title, fmt::tab_style(self.tab == i)));
             if i + 1 < TAB_TITLES.len() {
-                tab_spans.push(Span::raw(" "));
+                tab_spans.push(Span::raw(TAB_SEP));
             }
         }
         let tabs = vec![Line::from(tab_spans)];
-        f.render_widget(Tabs::new(tabs).select(self.tab).block(Block::default().borders(Borders::ALL).title("envhive-cli")), chunks[0]);
+        // .divider("") 关闭 ratatui 自带默认分隔符，改用上方显式 TAB_SEP，保证所有 Tab 一致显示 |
+        f.render_widget(Tabs::new(tabs).select(self.tab).divider("").block(Block::default().borders(Borders::ALL).title("envhive-cli")), chunks[0]);
 
         // 内容区先整体清空再重画：不同 Tab 的布局（列数/行数）差异大，
         // 部分终端（如 IDEA Terminal，Java 模拟器）对差分渲染的"光标定位 + 原地覆盖"
@@ -78,13 +84,13 @@ impl TuiApp {
             None => (format!("{}", self.status), Color::Green),
         };
         let hint = match self.tab {
-            0 => "q 退出  1-7/鼠标点 Tab  ↑↓ 导航  Enter 操作  Tab 焦点",
-            1 => "m 本地/市场  空格 启停   i/Enter 安装   d/Del 删除   o 打开目录   r 刷新  ·鼠标点Tab",
-            2 => "c 取消  x 清空终态  ·鼠标点Tab",
-            3 => "m 源/加速  Enter 应用/切换  a 添加自定义  d/Del 删除自定义  r 刷新  ·鼠标点Tab",
-            4 => "u 卸载  r 刷新  Tab 焦点  ·鼠标点Tab",
-            5 => "空格 开关  e 编辑  a 添加仓库  d/Del 删除仓库  r 刷新  ·鼠标点Tab",
-            _ => "全部功能一览  ·鼠标点Tab",
+            0 => "q 退出  1-7/鼠标点 Tab  ↑↓ 导航  Enter/双击 操作  Tab 焦点  ·鼠标点列表",
+            1 => "m 本地/市场  空格 启停   i/Enter/双击 安装   d/Del 删除   o 打开目录   r 刷新  ·鼠标点Tab/列表",
+            2 => "c 取消  x 清空终态  Enter/双击 取消任务  ·鼠标点Tab/列表",
+            3 => "m 源/加速  Enter/双击 应用/切换  a 添加自定义  d/Del 删除自定义  r 刷新  ·鼠标点Tab/列表",
+            4 => "u/Enter/双击 卸载  r 刷新  Tab 焦点  ·鼠标点Tab/列表",
+            5 => "空格 开关  e 编辑  a 添加仓库  d/Del 删除仓库  r 刷新  ·鼠标点Tab/列表",
+            _ => "全部功能一览  ·鼠标点Tab/列表",
         };
         let line = Line::from(vec![
             Span::styled(text, Style::default().fg(color)),

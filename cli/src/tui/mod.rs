@@ -23,7 +23,7 @@ mod tools;
 
 use std::collections::HashMap;
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use crossterm::event::{Event, KeyEventKind, MouseButton, MouseEventKind};
 use ratatui::layout::{Constraint, Direction, Layout, Rect};
@@ -45,10 +45,76 @@ use envhive_toolkit::tool::ToolInfo;
 /// 镜像源管理涉及的工具（与桌面 NetworkPage 一致）
 const REGISTRY_TOOLS: &[&str] = &["npm", "pip", "cargo", "maven", "go", "docker", "nuget", "gem", "pub", "conda"];
 
+/// 鼠标协议运行期自检：首个越界坐标即判定模拟器实现有缺陷，自动关闭鼠标。
+struct MouseGuard {
+    ok: bool,
+}
+
+impl MouseGuard {
+    fn new() -> Self {
+        Self { ok: true }
+    }
+
+    /// 校验一次鼠标坐标；越界（脏数据）返回 false 并标记失效。
+    /// 合法点击必然落在终端范围内，因此单次越界即可判定，无需多次采样。
+    fn check(&mut self, col: u16, row: u16, size: Rect) -> bool {
+        if !self.ok {
+            return false;
+        }
+        if col >= size.width || row >= size.height {
+            self.ok = false;
+        }
+        self.ok
+    }
+}
+
+/// 鼠标能力探测（不写死任何终端产品名，仅依据 `TERM` 做能力启发）。
+///
+/// - `dumb` / `unknown` 等明确无鼠标能力的终端 → 关
+/// - xterm 系 / screen / tmux / rxvt / 任意 256color / linux → 声明支持鼠标协议 → 开
+/// - 无 `TERM`（典型 Windows cmd / conhost）→ 乐观开启
+///
+/// 真正的实现缺陷由 [`MouseGuard`] 在运行期兜底关闭，故此处宁可乐观。
+fn should_enable_mouse() -> bool {
+    let t = match std::env::var("TERM") {
+        Ok(t) => t,
+        Err(_) => return true, // Windows cmd 等通常无 TERM，乐观开启
+    };
+    let t = t.to_ascii_lowercase();
+    if t == "dumb" || t == "unknown" {
+        return false;
+    }
+    t.starts_with("xterm")
+        || t.starts_with("screen")
+        || t.starts_with("tmux")
+        || t.starts_with("rxvt")
+        || t.contains("256color")
+        || t == "linux"
+}
+
 /// 顶部 Tab 栏标签（与 render 共用，保证鼠标命中检测与显示完全一致）
 pub(crate) const TAB_TITLES: &[&str] = &[
     " 1工具 ", " 2插件 ", " 3队列 ", " 4镜像 ", " 5统计 ", " 6设置 ", " 7关于 ",
 ];
+
+/// Tab 标签之间的分隔符（渲染与鼠标命中检测共用，保证坐标对齐）。
+/// 用 ASCII `|`，所有字符均为 1 cell 宽，避免 CJK 宽度计算偏差。
+pub(crate) const TAB_SEP: &str = " | ";
+
+/// 可点击列表区域标识（渲染期记录其外框 Rect，供鼠标命中检测）。
+/// 与 [`TuiApp::hit_list`] / [`TuiApp::on_list_click`] 配合使用。
+#[derive(Clone, Copy, PartialEq)]
+pub(crate) enum ClickTarget {
+    ToolList,
+    VersionList,
+    PluginList,
+    TaskList,
+    MirrorToolList,
+    MirrorPresetList,
+    StatsToolList,
+    StatsVersionList,
+    SettingList,
+}
 
 /// UI 消息：manager 事件 + 内部异步结果
 #[derive(Clone)]
@@ -162,6 +228,16 @@ pub struct TuiApp {
     /// （彻底重置 ratatui buffer 与终端光标位置，修复 IDEA Terminal 等终端
     /// 差分渲染下的边框字符漂移/错位）。
     pending_clear: bool,
+    /// 运行期鼠标是否启用（协议异常时由 [`MouseGuard`] 自动关闭）
+    mouse_enabled: bool,
+    /// 鼠标协议自检：首个越界坐标即判定模拟器实现有缺陷
+    mouse_guard: MouseGuard,
+    /// 渲染期记录的可点击列表区域（外框 Rect + 标识），供鼠标命中检测。
+    /// 每次 `render` 前清空、由各列表渲染方法重写，始终对应当前 Tab 布局。
+    click_lists: Vec<(ClickTarget, Rect)>,
+    /// 最近一次列表左键点击（目标 + 行 + 时刻），用于双击检测。
+    /// 双击只在不超出阈值且同为同一行时触发动作，避免与单次选中冲突。
+    last_click: Option<(ClickTarget, usize, Instant)>,
 }
 
 impl TuiApp {
@@ -216,10 +292,14 @@ impl TuiApp {
             error: None,
             quitting: false,
             pending_clear: false,
+            mouse_enabled: false,
+            mouse_guard: MouseGuard::new(),
+            click_lists: Vec::new(),
+            last_click: None,
         };
         app.refresh_mirror();
         app.refresh_stats();
-        app.status = "就绪 · 1-7/鼠标点击 切换 Tab，Tab 子视图焦点，q 退出".into();
+        app.status = "就绪 · 1-7/鼠标点 Tab，列表也可点击选中，Tab 切焦点，q 退出".into();
         app
     }
 
@@ -242,11 +322,16 @@ impl TuiApp {
         rx: &mut mpsc::UnboundedReceiver<UiMsg>,
     ) -> Result<()> {
         let mut terminal = ratatui::init();
-        // 启用鼠标点击：左键点击顶部 Tab 栏即可切换（IDEA Terminal 等 Java 模拟终端可能不支持）
-        let _ = crossterm::execute!(
-            std::io::stdout(),
-            crossterm::event::EnableMouseCapture
-        );
+        // 鼠标能力探测（不写死终端名）：仅明确不支持的类型才关，其余乐观开启，
+        // 真正的协议缺陷由运行期 MouseGuard 自检兜底关闭。
+        let mouse_enabled = should_enable_mouse();
+        self.mouse_enabled = mouse_enabled;
+        if mouse_enabled {
+            let _ = crossterm::execute!(
+                std::io::stdout(),
+                crossterm::event::EnableMouseCapture
+            );
+        }
         let mut stream = crossterm::event::EventStream::new();
         let mut tick = tokio::time::interval(Duration::from_millis(100));
         loop {
@@ -258,12 +343,39 @@ impl TuiApp {
                     match evt {
                         Some(Ok(Event::Key(k))) if k.kind == KeyEventKind::Press => self.on_key(k.code),
                         Some(Ok(Event::Mouse(m))) => {
-                            // 仅响应左键按下；坐标命中 Tab 栏则切换
-                            if matches!(m.kind, MouseEventKind::Down(MouseButton::Left)) {
-                                if let Ok(size) = terminal.size() {
-                                    let bar = TuiApp::tab_bar_rect(size.into());
-                                    if let Some(t) = TuiApp::tab_at(m.column, m.row, bar) {
-                                        self.switch_tab(t);
+                            if self.mouse_enabled {
+                                // 仅响应左键按下；先判 Tab 栏，再判列表命中
+                                if matches!(m.kind, MouseEventKind::Down(MouseButton::Left)) {
+                                    if let Ok(size) = terminal.size() {
+                                        // 运行期自检：首个越界坐标即判定该终端鼠标协议实现有缺陷 → 自动禁用
+                                        if !self.mouse_guard.check(m.column, m.row, size.into()) {
+                                            self.disable_mouse();
+                                            self.status = "⚠ 当前终端鼠标协议异常，已自动禁用鼠标（用 1-7 切换 Tab）".into();
+                                        } else if let Some(t) =
+                                            TuiApp::tab_at(m.column, m.row, TuiApp::tab_bar_rect(size.into()))
+                                        {
+                                            self.switch_tab(t);
+                                        } else if let Some((target, idx)) = self.hit_list(m.column, m.row) {
+                                            // 双击检测：同一列表同一行、间隔 < 400ms 视为双击。
+                                            // 双击镜像右侧预设/加速项即应用为当前（等同 Enter）；
+                                            // 其他列表双击退化为普通选中，避免误触动作。
+                                            let now = Instant::now();
+                                            let is_double = match &self.last_click {
+                                                Some((t, i, at)) => {
+                                                    *t == target
+                                                        && *i == idx
+                                                        && now.duration_since(*at) < Duration::from_millis(400)
+                                                }
+                                                None => false,
+                                            };
+                                            if is_double {
+                                                self.on_list_double_click(target, idx);
+                                                self.last_click = None;
+                                            } else {
+                                                self.on_list_click(target, idx);
+                                                self.last_click = Some((target, idx, now));
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -292,10 +404,12 @@ impl TuiApp {
             terminal.draw(|f| self.render(f))?;
         }
         // 退出前关闭鼠标捕获，恢复终端默认行为（否则鼠标选择/复制会失效）
-        let _ = crossterm::execute!(
-            std::io::stdout(),
-            crossterm::event::DisableMouseCapture
-        );
+        if self.mouse_enabled {
+            let _ = crossterm::execute!(
+                std::io::stdout(),
+                crossterm::event::DisableMouseCapture
+            );
+        }
         ratatui::restore();
         Ok(())
     }
@@ -303,6 +417,17 @@ impl TuiApp {
     /// 供异步任务回投消息的 sender（与 run 的 rx 同通道）
     fn tx(&self) -> mpsc::UnboundedSender<UiMsg> {
         self.tx.clone()
+    }
+
+    /// 运行时关闭鼠标捕获并标记失效（仅执行一次）。
+    fn disable_mouse(&mut self) {
+        if self.mouse_enabled {
+            let _ = crossterm::execute!(
+                std::io::stdout(),
+                crossterm::event::DisableMouseCapture
+            );
+            self.mouse_enabled = false;
+        }
     }
 
     /// 由终端尺寸推导顶部 Tab 栏 Rect（与 render 的纵向布局一致：3 / Min / 3）
@@ -321,18 +446,164 @@ impl TuiApp {
         if row != top && row != bar.y {
             return None;
         }
+        let sep_w = Line::from(TAB_SEP).width() as u16;
         let mut x = bar.x + 1; // 跳过左边框
         for (i, title) in TAB_TITLES.iter().enumerate() {
             // Line::from(title).width() 按显示宽度计（CJK 计 2），与渲染一致
             let w = Line::from(*title).width() as u16;
-            // 标签 + 其后分隔空格都算可点击，避免点空
-            let end = x + w + 1;
+            // 标签 + 其后分隔符都算可点击，避免点空
+            let end = x + w + sep_w;
             if col >= x && col < end {
                 return Some(i);
             }
             x = end;
         }
         None
+    }
+
+    /// 当前 Tab 中某可点击列表的元素数量（用于点击命中后的索引裁剪）。
+    fn list_count(&self, target: ClickTarget) -> usize {
+        match target {
+            ClickTarget::ToolList => self.tools.len(),
+            ClickTarget::VersionList => self.versions.len(),
+            ClickTarget::PluginList => {
+                if self.plugin_view == 1 { self.remote_plugins.len() } else { self.plugins.len() }
+            }
+            ClickTarget::TaskList => self.tasks.len(),
+            ClickTarget::MirrorToolList => {
+                if self.mirror_view == 1 { self.mirror_sdk_tools().len() } else { self.mirror_tools.len() }
+            }
+            ClickTarget::MirrorPresetList => {
+                if self.mirror_view == 1 { self.mirror_options().len() } else { self.current_presets().len() }
+            }
+            ClickTarget::StatsToolList => self.stats_tools().len(),
+            ClickTarget::StatsVersionList => self.stats_versions().len(),
+            ClickTarget::SettingList => self.settings_rows(),
+        }
+    }
+
+    /// 命中检测：给定终端坐标，返回落在哪个列表的哪一行（内容区内）。
+    /// `click_lists` 由渲染期写入，坐标算法与渲染一致：`Block::borders(ALL)`
+    /// 使内框相对外框上下左右各缩进 1 格，列表项从内框首行起逐行排列。
+    fn hit_list(&self, col: u16, row: u16) -> Option<(ClickTarget, usize)> {
+        for (target, rect) in &self.click_lists {
+            let inner = Rect {
+                x: rect.x + 1,
+                y: rect.y + 1,
+                width: rect.width.saturating_sub(2),
+                height: rect.height.saturating_sub(2),
+            };
+            if col >= inner.x && col < inner.x + inner.width && row >= inner.y && row < inner.y + inner.height {
+                let count = self.list_count(*target);
+                if count == 0 {
+                    return None;
+                }
+                let idx = (row - inner.y) as usize;
+                if idx < count {
+                    return Some((*target, idx));
+                }
+            }
+        }
+        None
+    }
+
+    /// 列表单击：选中对应行，并把焦点切到该列（双列 Tab 的左右列）。
+    /// 只做选择、不做破坏性动作（安装/卸载/启停），避免误触；需要操作请按 Enter / 空格。
+    fn on_list_click(&mut self, target: ClickTarget, idx: usize) {
+        match target {
+            ClickTarget::ToolList => {
+                self.tool_idx = idx;
+                self.focus_versions = false;
+                if let Some(t) = self.tools.get(idx) {
+                    self.versions = TuiApp::versions_for(Some(t), &[]);
+                }
+            }
+            ClickTarget::VersionList => {
+                self.ver_idx = idx;
+                self.focus_versions = true;
+            }
+            ClickTarget::PluginList => self.plugin_idx = idx,
+            ClickTarget::TaskList => self.task_idx = idx,
+            ClickTarget::MirrorToolList => {
+                self.mirror_idx = idx;
+                self.focus_mirror_tools = true;
+                if self.mirror_view == 0 {
+                    self.preset_idx = 0;
+                }
+            }
+            ClickTarget::MirrorPresetList => {
+                self.preset_idx = idx;
+                self.focus_mirror_tools = false;
+            }
+            ClickTarget::StatsToolList => {
+                self.stats_idx = idx;
+                self.focus_stats_versions = false;
+                self.stats_ver_idx = 0;
+            }
+            ClickTarget::StatsVersionList => {
+                self.stats_ver_idx = idx;
+                self.focus_stats_versions = true;
+            }
+            ClickTarget::SettingList => self.settings_idx = idx,
+        }
+        self.status = "鼠标已选中列表项（Enter 操作 / 空格 开关）".into();
+    }
+
+    /// 列表双击：等同该列表「Enter」的激活语义，但镜像/统计的**左侧**列表
+    /// 双击仅选中——避免误触「应用预设 / 卸载工具」这类动作（这些仍走键盘 Enter）。
+    fn on_list_double_click(&mut self, target: ClickTarget, idx: usize) {
+        match target {
+            // 工具：拉取该工具可用版本（等同 Enter 焦点在工具列表）
+            ClickTarget::ToolList => {
+                self.tool_idx = idx;
+                self.focus_versions = false;
+                if let Some(t) = self.tools.get(idx) {
+                    self.versions = TuiApp::versions_for(Some(t), &[]);
+                }
+                self.fetch_versions();
+            }
+            // 版本：切换该版本为全局默认
+            ClickTarget::VersionList => {
+                self.ver_idx = idx;
+                self.focus_versions = true;
+                self.act_on_version();
+            }
+            // 插件：本地启停 / 市场安装
+            ClickTarget::PluginList => {
+                self.plugin_idx = idx;
+                if self.plugin_view == 1 {
+                    self.install_remote_plugin();
+                } else {
+                    self.toggle_plugin();
+                }
+            }
+            // 队列：取消该任务
+            ClickTarget::TaskList => {
+                self.task_idx = idx;
+                self.cancel_task();
+            }
+            // 镜像右侧预设/加速：应用为当前
+            ClickTarget::MirrorPresetList => {
+                self.preset_idx = idx;
+                self.focus_mirror_tools = false;
+                self.activate_mirror();
+            }
+            // 统计版本：卸载该版本（带确认）
+            ClickTarget::StatsVersionList => {
+                self.stats_ver_idx = idx;
+                self.focus_stats_versions = true;
+                self.confirm_uninstall_version();
+            }
+            // 设置项：打开编辑（等同 Enter；开关行会切换，仓库行无操作）
+            ClickTarget::SettingList => {
+                self.settings_idx = idx;
+                self.activate_setting();
+            }
+            // 镜像/统计左侧列表双击仅选中：避免误触「应用预设 / 卸载工具」
+            ClickTarget::MirrorToolList | ClickTarget::StatsToolList => {
+                self.on_list_click(target, idx);
+            }
+        }
     }
 
     /// 重拉工具列表（current / installed 变化后调用）。

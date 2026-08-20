@@ -119,7 +119,7 @@ impl TuiApp {
         None
     }
 
-    pub(crate) fn render_mirror(&self, f: &mut ratatui::Frame<'_>, area: Rect) {
+    pub(crate) fn render_mirror(&mut self, f: &mut ratatui::Frame<'_>, area: Rect) {
         if self.mirror_view == 1 {
             // 下载加速视图
             let chunks = Layout::default()
@@ -149,6 +149,8 @@ impl TuiApp {
             let mut st = ListState::default();
             st.select(Some(self.mirror_idx));
             f.render_stateful_widget(list, chunks[0], &mut st);
+            let tool = self.mirror_sdk_tools().get(self.mirror_idx).map(|t| t.name.clone()).unwrap_or_default();
+            self.click_lists.push((ClickTarget::MirrorToolList, chunks[0]));
 
             let options = self.mirror_options();
             let selected = self.current_mirror_selected();
@@ -163,7 +165,6 @@ impl TuiApp {
                     ]))
                 })
                 .collect();
-            let tool = sdk_tools.get(self.mirror_idx).map(|t| t.name.clone()).unwrap_or_default();
             let hl = if self.focus_mirror_tools {
                 Style::default().bg(Color::DarkGray)
             } else {
@@ -176,6 +177,7 @@ impl TuiApp {
             let mut st = ListState::default();
             st.select(Some(self.preset_idx));
             f.render_stateful_widget(list, chunks[1], &mut st);
+            self.click_lists.push((ClickTarget::MirrorPresetList, chunks[1]));
             return;
         }
 
@@ -208,6 +210,7 @@ impl TuiApp {
         let mut st = ListState::default();
         st.select(Some(self.mirror_idx));
         f.render_stateful_widget(list, chunks[0], &mut st);
+        self.click_lists.push((ClickTarget::MirrorToolList, chunks[0]));
 
         // 右侧：当前状态 + 预设列表（结构化三列：名称 ≤20 cell | 当前标记 8 cell | URL 吃满剩余）
         const NAME_CELLS: usize = 20;
@@ -250,5 +253,6 @@ impl TuiApp {
         let mut st = ListState::default();
         st.select(Some(self.preset_idx));
         f.render_stateful_widget(list, chunks[1], &mut st);
+        self.click_lists.push((ClickTarget::MirrorPresetList, chunks[1]));
     }
 }

@@ -54,7 +54,7 @@ impl TuiApp {
         });
     }
 
-    pub(crate) fn render_stats(&self, f: &mut ratatui::Frame<'_>, area: Rect) {
+    pub(crate) fn render_stats(&mut self, f: &mut ratatui::Frame<'_>, area: Rect) {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([Constraint::Min(0), Constraint::Length(1)])
@@ -89,6 +89,7 @@ impl TuiApp {
         let mut st = ListState::default();
         st.select(Some(self.stats_idx));
         f.render_stateful_widget(list, panes[0], &mut st);
+        self.click_lists.push((ClickTarget::StatsToolList, panes[0]));
 
         // 右：版本明细
         let tool = self.stats_tools().get(self.stats_idx).map(|t| t.tool.clone()).unwrap_or_default();
@@ -122,6 +123,7 @@ impl TuiApp {
         let mut st = ListState::default();
         st.select(Some(self.stats_ver_idx));
         f.render_stateful_widget(list, panes[1], &mut st);
+        self.click_lists.push((ClickTarget::StatsVersionList, panes[1]));
 
         // 底部汇总行
         if let Some(s) = &self.stats {
