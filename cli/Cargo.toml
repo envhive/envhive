@@ -14,11 +14,11 @@ envhive-toolkit = { path = "../crates/envhive-toolkit" }
 envhive-manager = { path = "../crates/envhive-manager" }
 clap = { version = "4", features = ["derive"] }
 serde_json = "1"
-tracing = "0.1"
 # TUI 交互
 ratatui = "0.30"
 crossterm = { version = "0.28", features = ["event-stream"] }
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
+tokio = { version = "1", features = ["macros", "sync", "time"] }
 tokio-stream = "0.1"
 # HTTP（构造 EnvHiveManager）
-reqwest = { version = "0.12", features = ["json", "stream", "blocking"] }
+reqwest = { version = "0.12", features = ["json", "stream"] }
+dirs = "5"

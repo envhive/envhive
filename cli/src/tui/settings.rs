@@ -109,18 +109,22 @@ impl TuiApp {
         let cfg = self.manager.config.lock().unwrap().clone();
         self.settings_entries = cfg.registry.entries();
         self.mirror_cfg = cfg.download_mirror.clone();
+        self.proxy_enabled = cfg.proxy.enable;
+        self.proxy_url = cfg.proxy.url.clone();
+        self.cache_ttl = cfg.cache.available_hook_duration.clone();
+        self.storage_path = cfg.storage.tool_path.clone();
+        self.config_writable = cfg.verify_writable().is_ok();
         self.status = "配置已刷新".into();
     }
 
     pub(crate) fn render_settings(&self, f: &mut ratatui::Frame<'_>, area: Rect) {
-        let cfg = self.manager.config.lock().unwrap().clone();
         let rows: Vec<ListItem> = (0..self.settings_rows())
             .map(|i| {
                 let (label, value, color) = match self.setting_row_kind(i) {
-                    SettingRowKind::ProxyEnable => ("下载代理".to_string(), fmt::on_off(cfg.proxy.enable), Color::Green),
-                    SettingRowKind::ProxyUrl => ("代理地址".to_string(), cfg.proxy.url.clone().unwrap_or_else(|| "（未设置）".into()), Color::Cyan),
-                    SettingRowKind::CacheTtl => ("缓存有效期".to_string(), cfg.cache.available_hook_duration.clone(), Color::Cyan),
-                    SettingRowKind::StoragePath => ("工具存储路径".to_string(), cfg.storage.tool_path.clone(), Color::Cyan),
+                    SettingRowKind::ProxyEnable => ("下载代理".to_string(), fmt::on_off(self.proxy_enabled), Color::Green),
+                    SettingRowKind::ProxyUrl => ("代理地址".to_string(), self.proxy_url.clone().unwrap_or_else(|| "（未设置）".into()), Color::Cyan),
+                    SettingRowKind::CacheTtl => ("缓存有效期".to_string(), self.cache_ttl.clone(), Color::Cyan),
+                    SettingRowKind::StoragePath => ("工具存储路径".to_string(), self.storage_path.clone(), Color::Cyan),
                     SettingRowKind::RegistryEntry(idx) => {
                         let e = self.settings_entries.get(idx);
                         let value = e.map(|e| format!("{}  {}", e.name, e.url)).unwrap_or_default();

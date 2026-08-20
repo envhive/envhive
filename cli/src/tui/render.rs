@@ -53,8 +53,7 @@ impl TuiApp {
 
     pub(crate) fn render_about(&self, f: &mut ratatui::Frame<'_>, area: Rect) {
         let paths = &self.manager.paths;
-        let cfg = self.manager.config.lock().unwrap().clone();
-        let writable = cfg.verify_writable().is_ok();
+        let writable = self.config_writable;
         let installed: usize = self.manager.list_installed().len();
         let lines: Vec<Line> = vec![
             Line::from(vec![Span::styled("envhive-cli · 蜂巢 EnvHive", Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD))]),

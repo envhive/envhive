@@ -37,15 +37,16 @@ use crate::sink::{ChannelSink, UiSink};
 use crate::tui::UiMsg;
 
 /// 数据根目录：与桌面端一致（`~/.envhive`）
+///
+/// 用 `dirs` crate 解析用户主目录，比手写 `USERPROFILE`/`HOME` 更跨平台；
+/// 主目录缺失时直接报错退出，避免回退到当前工作目录误写数据。
 fn data_root() -> PathBuf {
-    dirs_home().join(".envhive")
-}
-
-fn dirs_home() -> PathBuf {
-    std::env::var("USERPROFILE")
-        .or_else(|_| std::env::var("HOME"))
-        .map(PathBuf::from)
-        .unwrap_or_else(|_| PathBuf::from("."))
+    dirs::home_dir()
+        .map(|h| h.join(".envhive"))
+        .unwrap_or_else(|| {
+            eprintln!("错误: 无法确定用户主目录（HOME / USERPROFILE 均缺失），无法定位数据目录 ~/.envhive");
+            std::process::exit(1);
+        })
 }
 
 /// 构建 HTTP 客户端（与桌面一致：代理第 1 层）
@@ -63,13 +64,39 @@ fn build_http_client(cfg: &AppConfig) -> reqwest::Client {
     builder.build().unwrap_or_default()
 }
 
-/// 构造 EnvHiveManager（注入事件接收器）
-fn build_manager(sink: Arc<dyn EventSink>) -> EnvHiveManager {
+/// 应用上下文：配置 + 路径元数据 + HTTP 客户端（多命令共享，避免重复构造）
+struct AppContext {
+    config: AppConfig,
+    paths: pathmeta::PathMeta,
+    client: reqwest::Client,
+}
+
+/// 加载应用配置与路径元数据，构造共享 HTTP 客户端（代理第 1 层）。
+///
+/// 配置加载失败（坏 YAML / 权限问题）不再静默回退默认：打印警告后仍可用默认配置，
+/// 避免后续行为莫名其妙地异常且难以排查。
+fn load_context() -> AppContext {
     let root = data_root();
-    let config = AppConfig::load(&root.join("config.yaml")).unwrap_or_default();
-    let paths = pathmeta::from_root(&root);
-    let client = build_http_client(&config);
-    EnvHiveManager::with_event_sink(config, paths, client, sink)
+    let config_path = root.join("config.yaml");
+    match AppConfig::load(&config_path) {
+        Ok(config) => {
+            let paths = pathmeta::from_root(&root);
+            let client = build_http_client(&config);
+            AppContext { config, paths, client }
+        }
+        Err(e) => {
+            eprintln!("警告: 配置加载失败，已回退默认配置: {e}");
+            let config = AppConfig::default();
+            let paths = pathmeta::from_root(&root);
+            let client = build_http_client(&config);
+            AppContext { config, paths, client }
+        }
+    }
+}
+
+/// 构造 EnvHiveManager（注入事件接收器）
+fn build_manager(ctx: &AppContext, sink: Arc<dyn EventSink>) -> EnvHiveManager {
+    EnvHiveManager::with_event_sink(ctx.config.clone(), ctx.paths.clone(), ctx.client.clone(), sink)
 }
 
 #[derive(Parser)]
@@ -228,19 +255,16 @@ fn cmd_init(dir: Option<PathBuf>, force: bool, tools: &[(String, ToolValue)]) ->
 
 /// load：计算合并 env → 输出 shell 脚本 / JSON
 fn cmd_load(shell_arg: Option<&str>, dir: Option<PathBuf>, json: bool) -> Result<()> {
-    // 1. 数据根 + 路径元数据（不写磁盘）
-    let root = data_root();
-    let config_path = root.join("config.yaml");
-    let config = AppConfig::load(&config_path).unwrap_or_default();
-    let paths = pathmeta::from_root(&root);
+    // 1. 共享应用上下文（配置 + 路径元数据 + HTTP 客户端），与 build_manager 复用同一加载路径
+    let ctx = load_context();
 
     // 2. 配置链（从指定目录或 cwd 向上定位 .envhive.toml）
     let project_dir = dir.unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
-    let chain = ConfigChain::load(&paths, Some(&project_dir))?;
+    let chain = ConfigChain::load(&ctx.paths, Some(&project_dir))?;
 
     // 3. 计算合并 env
     let lookup = ToolLookup::new();
-    let envs = resolve_envs(&paths, &chain, config.env_global(), &lookup)?;
+    let envs = resolve_envs(&ctx.paths, &chain, ctx.config.env_global(), &lookup)?;
 
     // 4. 输出
     if json {
@@ -267,18 +291,20 @@ fn cmd_load(shell_arg: Option<&str>, dir: Option<PathBuf>, json: bool) -> Result
 
 /// tui：交互式终端界面（ratatui）
 async fn cmd_tui() -> Result<()> {
+    let ctx = load_context();
     let (tx, rx) = mpsc::unbounded_channel::<UiMsg>();
     // UiSink 把 manager 事件包装为 UiMsg::Manager 投递到 UI 通道
     let tx_manager = tx.clone();
-    let manager = Arc::new(build_manager(Arc::new(UiSink(tx_manager))));
+    let manager = Arc::new(build_manager(&ctx, Arc::new(UiSink(tx_manager))));
     let queue = Arc::new(QueueManager::with_event_sink(Arc::new(UiSink(tx.clone()))));
     crate::tui::run_tui(manager, queue, tx, rx).await
 }
 
 /// install：安装工具（行内进度条）
 async fn cmd_install(name: &str, version: &str) -> Result<()> {
+    let ctx = load_context();
     let (tx, mut rx) = mpsc::unbounded_channel::<ManagerEvent>();
-    let manager = Arc::new(build_manager(Arc::new(ChannelSink(tx))));
+    let manager = Arc::new(build_manager(&ctx, Arc::new(ChannelSink(tx))));
 
     let mgr = manager.clone();
     let name_c = name.to_string();
@@ -286,9 +312,11 @@ async fn cmd_install(name: &str, version: &str) -> Result<()> {
     let mut handle = tokio::spawn(async move { mgr.install_tool(&name_c, &ver_c, None, None).await });
 
     // 消费进度事件 → 行内刷新
+    // 进度通道关闭（install 任务结束、sender 已 drop）后停止轮询 rx，仅等待 handle 收尾，避免忙等
+    let mut progress_done = false;
     loop {
         tokio::select! {
-            evt = rx.recv() => {
+            evt = rx.recv(), if !progress_done => {
                 match evt {
                     Some(ManagerEvent::Progress(p)) => render_inline_progress(&p),
                     Some(ManagerEvent::Error { message, .. }) => {
@@ -299,6 +327,7 @@ async fn cmd_install(name: &str, version: &str) -> Result<()> {
                             render_inline_stage(&s.tool, &s.version, d);
                         }
                     }
+                    None => { progress_done = true; }
                     _ => {}
                 }
             }
@@ -319,7 +348,8 @@ async fn cmd_install(name: &str, version: &str) -> Result<()> {
 
 /// switch：切换全局默认版本
 async fn cmd_switch(name: &str, version: &str) -> Result<()> {
-    let manager = build_manager(Arc::new(NullSink));
+    let ctx = load_context();
+    let manager = build_manager(&ctx, Arc::new(NullSink));
     let r = manager.switch_global(name, version).await?;
     println!("✓ {}", r.message);
     Ok(())
@@ -327,7 +357,8 @@ async fn cmd_switch(name: &str, version: &str) -> Result<()> {
 
 /// unuse：解除全局使用
 fn cmd_unuse(name: &str) -> Result<()> {
-    let manager = build_manager(Arc::new(NullSink));
+    let ctx = load_context();
+    let manager = build_manager(&ctx, Arc::new(NullSink));
     manager.unuse_global(name)?;
     println!("✓ {name} 已解除全局使用");
     Ok(())
@@ -335,7 +366,8 @@ fn cmd_unuse(name: &str) -> Result<()> {
 
 /// list：列出已安装工具
 fn cmd_list() -> Result<()> {
-    let manager = build_manager(Arc::new(NullSink));
+    let ctx = load_context();
+    let manager = build_manager(&ctx, Arc::new(NullSink));
     let infos = manager.list_installed();
     if infos.is_empty() {
         println!("（未安装任何工具）");

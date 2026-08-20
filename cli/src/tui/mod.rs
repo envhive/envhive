@@ -134,6 +134,13 @@ pub struct TuiApp {
     // 设置 Tab
     settings_entries: Vec<RegistryEntry>,
     settings_idx: usize,
+    // 设置项缓存：渲染期只读，变更时由 refresh_config 刷新（避免每帧加锁拷贝整个 config）
+    proxy_enabled: bool,
+    proxy_url: Option<String>,
+    cache_ttl: String,
+    storage_path: String,
+    // 关于页：配置可写性缓存
+    config_writable: bool,
     // 输入 / 确认模态
     input: Option<InputState>,
     confirm: Option<ConfirmState>,
@@ -192,6 +199,11 @@ impl TuiApp {
             stats_ver_idx: 0,
             settings_entries: cfg.registry.entries(),
             settings_idx: 0,
+            proxy_enabled: cfg.proxy.enable,
+            proxy_url: cfg.proxy.url.clone(),
+            cache_ttl: cfg.cache.available_hook_duration.clone(),
+            storage_path: cfg.storage.tool_path.clone(),
+            config_writable: cfg.verify_writable().is_ok(),
             input: None,
             confirm: None,
             pending_registry_name: None,
