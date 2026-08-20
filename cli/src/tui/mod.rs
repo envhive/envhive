@@ -40,7 +40,7 @@ use envhive_manager::queue::{QueueManager, QueueTask};
 use envhive_manager::usage::{stats as usage_stats, UsageStats};
 use envhive_toolkit::plugin::PluginInfo;
 use envhive_toolkit::registry::{PresetInfo, RegistryState};
-use envhive_toolkit::tool::ToolInfo;
+use envhive_toolkit::tool::{DistributionInfo, ToolInfo};
 
 /// 镜像源管理涉及的工具（与桌面 NetworkPage 一致）
 const REGISTRY_TOOLS: &[&str] = &["npm", "pip", "cargo", "maven", "go", "docker", "nuget", "gem", "pub", "conda"];
@@ -177,6 +177,9 @@ pub struct TuiApp {
     focus_versions: bool,
     versions: Vec<String>,
     ver_idx: usize,
+    /// 发行商维度（Lua 插件 TOOL.distributions 声明；仅含发行商维度的工具生效，如 Java）
+    /// 无发行商维度（如 Node.js）时恒为 0，current_distribution_key() 返回 None。
+    dist_idx: usize,
     // 插件 Tab：0=本地 1=市场
     plugin_view: usize,
     plugins: Vec<PluginInfo>,
@@ -257,6 +260,7 @@ impl TuiApp {
             focus_versions: false,
             versions,
             ver_idx: 0,
+            dist_idx: 0,
             plugin_view: 0,
             plugins,
             plugin_idx: 0,
@@ -299,8 +303,61 @@ impl TuiApp {
         };
         app.refresh_mirror();
         app.refresh_stats();
-        app.status = "就绪 · 1-7/鼠标点 Tab，列表也可点击选中，Tab 切焦点，q 退出".into();
+        app.reset_distribution();
+        app.status = "就绪 · 1-7/鼠标点 Tab，列表也可点击选中，Tab 切焦点，d 切换发行商，q 退出".into();
         app
+    }
+
+    /// 当前工具声明的发行商维度（无则 None）
+    fn current_distributions(&self) -> Option<&[DistributionInfo]> {
+        self.tools.get(self.tool_idx).and_then(|t| t.distributions.as_deref())
+    }
+
+    /// 当前选中的发行商 key（无发行商维度 → None，后续 effective_distribution 解析为无维度）
+    fn current_distribution_key(&self) -> Option<String> {
+        self.current_distributions()
+            .and_then(|d| d.get(self.dist_idx).map(|x| x.key.clone()))
+    }
+
+    /// 当前发行商展示名（无维度 → None）
+    fn current_distribution_display(&self) -> Option<String> {
+        self.current_distributions()
+            .and_then(|d| d.get(self.dist_idx).map(|x| x.display.clone()))
+    }
+
+    /// 切换工具后把发行商重置为该工具缺省（default_distribution 优先，否则取 [0]）；
+    /// 无维度工具将 dist_idx 夹回 0。
+    fn reset_distribution(&mut self) {
+        let Some(dists) = self.current_distributions() else {
+            self.dist_idx = 0;
+            return;
+        };
+        let default = self
+            .tools
+            .get(self.tool_idx)
+            .and_then(|t| t.default_distribution.as_deref());
+        self.dist_idx = default
+            .and_then(|d| dists.iter().position(|x| x.key == d))
+            .unwrap_or(0);
+    }
+
+    /// 循环切换发行商（仅对含发行商维度的工具生效），并重新拉取版本列表。
+    fn cycle_distribution(&mut self) {
+        let dists = match self.current_distributions() {
+            Some(d) if !d.is_empty() => d.to_vec(),
+            _ => {
+                self.status = "当前工具无发行商维度（如 Node.js 仅有单一官方源）".into();
+                return;
+            }
+        };
+        self.dist_idx = (self.dist_idx + 1) % dists.len();
+        self.ver_idx = 0;
+        let d = &dists[self.dist_idx];
+        self.status = format!(
+            "已切换发行商：{} （Enter 拉取版本 / 安装将使用该发行商）",
+            d.display
+        );
+        self.fetch_versions();
     }
 
     /// 初始版本列表：已装版本 + 已缓存可用版本（未拉取时仅已装）
@@ -517,6 +574,7 @@ impl TuiApp {
                 if let Some(t) = self.tools.get(idx) {
                     self.versions = TuiApp::versions_for(Some(t), &[]);
                 }
+                self.reset_distribution();
             }
             ClickTarget::VersionList => {
                 self.ver_idx = idx;
@@ -560,6 +618,7 @@ impl TuiApp {
                 if let Some(t) = self.tools.get(idx) {
                     self.versions = TuiApp::versions_for(Some(t), &[]);
                 }
+                self.reset_distribution();
                 self.fetch_versions();
             }
             // 版本：切换该版本为全局默认
@@ -648,7 +707,11 @@ impl TuiApp {
                 self.versions = versions;
                 self.ver_idx = 0;
                 self.focus_versions = true;
-                self.status = format!("{tool} 可用版本 {} 个（Tab 在版本列表导航）", self.versions.len());
+                let dist = self
+                    .current_distribution_display()
+                    .map(|d| format!(" · {d}"))
+                    .unwrap_or_default();
+                self.status = format!("{tool}{dist} 可用版本 {} 个（Tab 在版本列表导航）", self.versions.len());
             }
             UiMsg::RemotePlugins(list) => {
                 self.remote_plugins = list;

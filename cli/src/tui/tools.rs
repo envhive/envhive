@@ -15,11 +15,12 @@ impl TuiApp {
     pub(crate) fn fetch_versions(&mut self) {
         let Some(tool) = self.tools.get(self.tool_idx) else { return };
         let name = tool.name.clone();
+        let dist = self.current_distribution_key();
         let mgr = self.manager.clone();
         let tx = self.tx();
         self.status = format!("正在拉取 {name} 版本…");
         tokio::spawn(async move {
-            match mgr.fetch_versions(&name, None, true).await {
+            match mgr.fetch_versions(&name, dist.as_deref(), true).await {
                 Ok(cache) => {
                     let _ = tx.send(UiMsg::Versions { tool: name, versions: cache.version_strings() });
                 }
@@ -53,7 +54,7 @@ impl TuiApp {
                 }
             });
         } else {
-            let outcome = self.queue.enqueue(tool.name.clone(), version.clone(), None);
+            let outcome = self.queue.enqueue(tool.name.clone(), version.clone(), self.current_distribution_key());
             let reused = outcome.reused;
             if !reused {
                 let q = self.queue.clone();
@@ -98,6 +99,10 @@ impl TuiApp {
 
         // 右侧：版本列表
         let tool = self.tools.get(self.tool_idx).map(|t| t.name.clone()).unwrap_or_default();
+        let title = match self.current_distribution_display() {
+            Some(d) => format!("版本 · {tool} · {d} （d/D 切换发行商）"),
+            None => format!("版本 · {tool}"),
+        };
         let items: Vec<ListItem> = self
             .versions
             .iter()
@@ -128,7 +133,7 @@ impl TuiApp {
             .collect();
         let hl = if self.focus_versions { Style::default().bg(Color::Blue).fg(Color::White).add_modifier(Modifier::BOLD) } else { Style::default().bg(Color::DarkGray) };
         let list = List::new(items)
-            .block(Block::default().borders(Borders::ALL).title(format!("版本 · {tool}")))
+            .block(Block::default().borders(Borders::ALL).title(title))
             .highlight_style(hl)
             .highlight_symbol("> ");
         let mut st = ListState::default();

@@ -43,6 +43,8 @@ impl TuiApp {
             KeyCode::Char(' ') => self.on_space(),
             KeyCode::Char('r') => self.on_refresh(),
             KeyCode::Char('a') => self.on_add(),
+            // 工具页小写 d 也用于切换发行商（无发行商维度的工具会提示；其他 Tab 仍是删除语义）
+            KeyCode::Char('d') if self.tab == 0 => self.cycle_distribution(),
             KeyCode::Char('d') | KeyCode::Delete => self.on_delete(),
             KeyCode::Char('m') => {
                 if self.tab == 1 {
@@ -86,6 +88,11 @@ impl TuiApp {
                     self.cancel_task();
                 }
             }
+            KeyCode::Char('D') => {
+                if self.tab == 0 {
+                    self.cycle_distribution();
+                }
+            }
             _ => {}
         }
     }
@@ -116,16 +123,17 @@ impl TuiApp {
 
     pub(crate) fn move_sel(&mut self, delta: isize) {
         match self.tab {
-            0 => {
-                if self.focus_versions {
-                    self.ver_idx = fmt::shift(self.ver_idx, delta, self.versions.len());
-                } else {
-                    self.tool_idx = fmt::shift(self.tool_idx, delta, self.tools.len());
-                    if self.tools.len() > self.tool_idx {
-                        self.versions = TuiApp::versions_for(Some(&self.tools[self.tool_idx]), &[]);
+                0 => {
+                    if self.focus_versions {
+                        self.ver_idx = fmt::shift(self.ver_idx, delta, self.versions.len());
+                    } else {
+                        self.tool_idx = fmt::shift(self.tool_idx, delta, self.tools.len());
+                        if self.tools.len() > self.tool_idx {
+                            self.versions = TuiApp::versions_for(Some(&self.tools[self.tool_idx]), &[]);
+                        }
+                        self.reset_distribution();
                     }
                 }
-            }
             1 => {
                 if self.plugin_view == 1 {
                     self.plugin_idx = fmt::shift(self.plugin_idx, delta, self.remote_plugins.len());
