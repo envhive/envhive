@@ -28,7 +28,8 @@ impl TauriSink {
 
 impl EventSink for TauriSink {
     fn emit(&self, evt: ManagerEvent) {
-        let Some(app) = self.app.lock().unwrap().as_ref() else { return };
+        let guard = self.app.lock().unwrap();
+        let Some(app) = guard.as_ref() else { return };
         match evt {
             ManagerEvent::Progress(p) => {
                 let _ = app.emit("download-progress", p);
