@@ -22,7 +22,7 @@ EnvHive（蜂巢）是一款跨平台桌面应用，用于**安装与管理 Java
 
 ### 📦 项目级环境（`.envhive.toml`）
 - **三作用域配置链**：`Global`（`~/.envhive/.envhive.toml`）< `Session` < `Project`（从工作目录向上自动定位 `<project>/.envhive.toml`），后者优先；
-- **CLI 双二进制**：`envhive-cli init` 生成项目配置、`envhive-cli load` 输出各 shell（bash / zsh / fish / powershell / cmd）可 eval 的环境注入脚本，实现**终端内一键进入项目环境**；
+- **CLI 双形态**：`envhive-cli init` 生成项目配置、`envhive-cli load` 输出各 shell（bash / zsh / fish / powershell / cmd）可 eval 的环境注入脚本，实现**终端内一键进入项目环境**；同时提供 `envhive-cli tui` 终端交互界面（见下方「CLI 终端界面」），覆盖工具 / 插件 / 队列 / 镜像 / 统计 / 设置 / 关于共 7 个标签页。
 - 项目环境按预设版本组合启动会话，不污染系统变量。
 
 ### 🔌 Lua 插件生态
@@ -47,6 +47,35 @@ EnvHive（蜂巢）是一款跨平台桌面应用，用于**安装与管理 Java
   <tr>
     <td width="50%"><img src="asserts/download.png" alt="下载队列" /><br /><b>下载队列</b>：实时进度条、下载速率、剩余时间与镜像回退提示，关闭页面后下载照常进行。</td>
     <td width="50%"><img src="asserts/statistics.png" alt="使用统计" /><br /><b>使用统计</b>：近 30 天切换次数柱状图 + 存储占用表，一键定位大文件、清理冷门版本。</td>
+  </tr>
+</table>
+
+---
+
+## CLI 终端界面（`envhive-cli tui`）
+
+独立 CLI 工具内置的 TUI 界面，**零 Tauri 依赖**，复用 `crates/envhive-manager` 同一套业务逻辑。启动后通过 `1~7` 数字键 / 鼠标 Tab 在 7 个标签页之间切换：
+
+| # | 标签 | 功能 |
+|---|---|---|
+| 1 | 工具 | 左侧工具列表（go / java / lua / maven / nodejs / python / tomcat …），右侧版本列表，支持 Enter 拉取、Enter 切换、空格开关 |
+| 2 | 插件 | 本地插件与市场插件切换；空格启停、d/Del 删除、o 打开目录、i/Enter/双击 安装、`m` 在本地 / 市场视图间切换 |
+| 3 | 队列 | 下载任务进度、速率、剩余时间、镜像回退提示；c 取消任务、x 清空终态 |
+| 4 | 镜像 | 左侧工具镜像源（npm / pip / cargo / maven / go / docker / nuget / gem / pub / conda …），右侧预设 / 自定义源；a 添加自定义源、d/Del 删除自定义源 |
+| 5 | 统计 | 左侧使用次数柱状 + 占用，右侧版本明细；u/Enter/双击 卸载 |
+| 6 | 设置 | 下载代理开关、代理地址、缓存有效期、工具存储路径、插件仓库列表；a 添加仓库、d/Del 删除仓库 |
+| 7 | 关于 | 版本信息 |
+
+<table>
+  <tr>
+    <td width="33%"><img src="asserts/1.png" alt="TUI 工具" /><br /><b>① 工具</b>：左工具 / 右版本，按 Enter 拉取或切换，空格切换启用状态。</td>
+    <td width="33%"><img src="asserts/2.png" alt="TUI 插件" /><br /><b>② 插件</b>：本地 / 市场双视图，空格启停、d/Del 删除、i/Enter/双击 安装。</td>
+    <td width="33%"><img src="asserts/3.png" alt="TUI 队列" /><br /><b>③ 队列</b>：下载进度 + 任务列表，Enter/双击 取消、x 清空终态。</td>
+  </tr>
+  <tr>
+    <td width="33%"><img src="asserts/4.png" alt="TUI 镜像" /><br /><b>④ 镜像</b>：左工具 / 右预设 + 自定义，a 添加自定义源、d/Del 删除。</td>
+    <td width="33%"><img src="asserts/5.png" alt="TUI 统计" /><br /><b>⑤ 统计</b>：左切换次数柱状 + 占用，右版本明细，u/Enter/双击 卸载。</td>
+    <td width="33%"><img src="asserts/6.png" alt="TUI 设置" /><br /><b>⑥ 设置</b>：下载代理、缓存有效期、工具存储路径、插件仓库列表。</td>
   </tr>
 </table>
 
@@ -127,7 +156,7 @@ eval "$(envhive-cli load)"               # bash/zsh 注入项目环境
 │  envhive-manager     工具 / 插件 / 镜像 / 环境编排、下载队列、统计、项目、自启      │
 │  envhive-toolkit     Lua 插件 VM(mlua)、镜像源、下载校验、Shell 渲染、注册表        │
 │  envhive-core        配置链(Global/Project/Session)、环境合并、Windows 注册表      │
-│  envhive-cli         init/load/tui —— 独立 CLI（零 Tauri 依赖，交互式工具管理）    │
+│  envhive-cli         init / load / tui —— 独立 CLI（零 Tauri 依赖，7-Tab 终端 UI：工具/插件/队列/镜像/统计/设置/关于）│
 └────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
