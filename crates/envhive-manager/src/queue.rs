@@ -13,9 +13,9 @@ use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde::Serialize;
-use tauri::{AppHandle, Emitter};
 
 use envhive_core::error::{EnvHiveError, EnvHiveErrorKind, Result};
+use crate::events::{EventSink, ManagerEvent, NullSink};
 use crate::manager::EnvHiveManager;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
@@ -65,14 +65,22 @@ pub struct QueueManager {
     next_id: Mutex<u64>,
     /// 执行中任务的取消标志：id -> flag（enqueue 时创建，任务终态后移除）
     cancel_flags: Mutex<HashMap<u64, Arc<AtomicBool>>>,
+    /// 事件接收器（桌面=Tauri 事件，CLI/TUI=channel；默认丢弃）
+    sink: Arc<dyn EventSink>,
 }
 
 impl QueueManager {
     pub fn new() -> Self {
+        Self::with_event_sink(Arc::new(NullSink))
+    }
+
+    /// 注入事件接收器（桌面端传 Tauri 实现；CLI/TUI 传 channel 实现）
+    pub fn with_event_sink(sink: Arc<dyn EventSink>) -> Self {
         QueueManager {
             inner: Mutex::new(QueueInner::default()),
             next_id: Mutex::new(1),
             cancel_flags: Mutex::new(HashMap::new()),
+            sink,
         }
     }
 
@@ -113,11 +121,11 @@ impl QueueManager {
         self.inner.lock().unwrap().tasks.iter().cloned().collect()
     }
 
-    /// 推送当前队列快照（`enqueue` 后立即调用）。
+    /// 推送当前队列快照（`enqueue` 后立即调用；经事件接收器分发，无 UI 时静默）。
     /// 修复：此前只在 worker 状态切换（running/done）时 emit，任务入队时若无事件，
     /// 前端在「排队中」阶段看不到新任务（表现为下载队列始终只显示一个）。
-    pub fn emit_snapshot(&self, app: &AppHandle) {
-        emit_queue(app, &self.snapshot());
+    pub fn emit_snapshot(&self) {
+        self.emit_queue();
     }
 
     pub fn is_running(&self) -> bool {
@@ -206,7 +214,7 @@ impl QueueManager {
 
     /// 后台 worker：串行消费队列。至多一个 worker 在跑；
     /// 队列空时重置 `running` 并退出；有新任务由外部再次调用。
-    pub async fn run_worker(self: &Arc<Self>, app: AppHandle, manager: Arc<EnvHiveManager>) {
+    pub async fn run_worker(self: &Arc<Self>, manager: Arc<EnvHiveManager>) {
         loop {
             // 1. 抢执行权（running=false 才可进入）
             {
@@ -235,12 +243,11 @@ impl QueueManager {
                 t.message = Some("开始执行".into());
                 t.clone()
             };
-            emit_queue(&app, &self.snapshot());
+            self.emit_queue();
 
             // 4. 执行安装（携带取消标志）
             let result = manager
                 .install_tool(
-                    &app,
                     &task.tool,
                     &task.version,
                     task.distribution.as_deref(),
@@ -274,7 +281,7 @@ impl QueueManager {
                 }
             }
             self.clear_flag(task.id);
-            emit_queue(&app, &self.snapshot());
+            self.emit_queue();
 
             // 6. 释放执行权，循环继续取下一个任务
             self.inner.lock().unwrap().running = false;
@@ -285,10 +292,11 @@ impl QueueManager {
     fn cancel_flag_arc(&self, id: u64) -> Option<Arc<AtomicBool>> {
         self.cancel_flags.lock().unwrap().get(&id).cloned()
     }
-}
 
-fn emit_queue(app: &AppHandle, tasks: &[QueueTask]) {
-    let _ = app.emit("queue-updated", tasks);
+    /// 经事件接收器推送队列快照（无 UI 场景为 NullSink，静默丢弃）
+    fn emit_queue(&self) {
+        self.sink.emit(ManagerEvent::QueueUpdated(self.snapshot()));
+    }
 }
 
 fn now_ts() -> i64 {

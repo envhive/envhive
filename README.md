@@ -127,7 +127,7 @@ eval "$(envhive-cli load)"               # bash/zsh 注入项目环境
 │  envhive-manager     工具 / 插件 / 镜像 / 环境编排、下载队列、统计、项目、自启      │
 │  envhive-toolkit     Lua 插件 VM(mlua)、镜像源、下载校验、Shell 渲染、注册表        │
 │  envhive-core        配置链(Global/Project/Session)、环境合并、Windows 注册表      │
-│  envhive-cli         init / load —— 项目配置生成与终端环境注入（无 Tauri 依赖）    │
+│  envhive-cli         init/load/tui —— 独立 CLI（零 Tauri 依赖，交互式工具管理）    │
 └────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -151,17 +151,18 @@ envhive/
 │   │   ├── hooks/useBackend.ts     #   invoke 封装 + Tauri 事件订阅
 │   │   ├── store.ts                #   全局状态
 │   │   └── updater.ts              #   自动更新
-│   ├── src-tauri/                  # Rust 后端
-│   │   ├── crates/
-│   │   │   ├── envhive-core/       #   配置链、环境合并、错误、事件、日志、Windows 注册表
-│   │   │   ├── envhive-toolkit/    #   Lua 插件 VM、镜像源、工具下载/校验/安装、Shell 渲染
-│   │   │   ├── envhive-manager/    #   业务编排、下载队列、统计、项目、开机自启
-│   │   │   └── envhive-cli/        #   终端 CLI（init / load）
+│   ├── src-tauri/                  # Rust 后端（独立 workspace，path 依赖根 crates/）
 │   │   ├── src/commands/           #   Tauri 命令（tool / registry / plugin / project …）
 │   │   ├── capabilities/           #   权限声明
 │   │   └── tauri.conf.json         #   窗口 / 打包 / 更新配置
 │   ├── scripts/gen_icons.py        # 纯 stdlib 生成蜂巢图标（PNG/ICO）
 │   └── vite.config.ts              # Vite 配置（端口 1420）
+├── crates/                         # 共享 crate（根 workspace：crates/* + cli）
+│   ├── envhive-core/               #   配置链、环境合并、错误、事件、日志、Windows 注册表
+│   ├── envhive-toolkit/            #   Lua 插件 VM、镜像源、工具下载/校验/安装、Shell 渲染
+│   └── envhive-manager/            #   业务编排、下载队列、统计、项目、开机自启
+├── cli/                            # 独立 CLI（零 Tauri 依赖，可单独构建分发）
+│   └── src/                        #   init / load / tui / install / switch / unuse / list
 ├── plugins/                        # 插件仓库（官方）
 │   ├── src/<name>/                 #   Lua 插件源码（plugin.lua + icon.svg + lib/）
 │   ├── zip/<name>.zip              #   构建产物

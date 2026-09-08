@@ -60,9 +60,9 @@ onUnmounted(() => cleanupEvents?.());
     <n-message-provider>
       <n-dialog-provider>
         <n-layout position="absolute" class="app-shell">
-          <n-layout has-sider position="absolute">
+          <n-layout has-sider position="absolute" class="app-body">
             <Sidebar />
-            <n-layout>
+            <div class="app-right">
               <n-layout-header bordered class="app-header">
                 <TopBar />
               </n-layout-header>
@@ -89,7 +89,7 @@ onUnmounted(() => cleanupEvents?.());
                   <AboutPage v-else-if="currentPage === 'about'" />
                 </template>
               </n-layout-content>
-            </n-layout>
+            </div>
           </n-layout>
 
           <QueueDrawer />
@@ -103,12 +103,38 @@ onUnmounted(() => cleanupEvents?.());
 .app-shell {
   background: #f6f7f9;
 }
+/* 含 sider 的布局锁定为 absolute，从而填满壳层高度、不随内容撑高 */
+.app-body {
+  background: #f6f7f9;
+}
+/* 右侧区域：相对定位容器，顶栏绝对固定顶部，内容区独立滚动 */
+.app-right {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  background: #f6f7f9;
+}
 .app-header {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 5;
   display: flex;
   align-items: center;
   padding: 0 24px;
-  min-height: 56px;
+  height: 56px;
   background: #fff;
+}
+.app-content {
+  position: absolute;
+  top: 56px;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  overflow-y: auto;
+  min-height: 0;
 }
 .app-loading {
   display: flex;

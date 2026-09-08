@@ -8,10 +8,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use tauri::AppHandle;
-
 use envhive_core::error::{EnvHiveError, EnvHiveErrorKind, Result};
-use crate::events::{self, DownloadStage};
+use crate::events::{DownloadProgress, DownloadStage, InstallStatus, ManagerEvent, VersionChanged};
 use envhive_core::pathmeta::PathMeta;
 use envhive_toolkit::plugin;
 use envhive_toolkit::tool::download::{download_and_verify, Downloader};
@@ -169,53 +167,50 @@ impl EnvHiveManager {
 
     pub async fn install_tool(
         &self,
-        app: &AppHandle,
         name: &str,
         query: &str,
         distribution: Option<&str>,
         cancel: Option<Arc<AtomicBool>>,
     ) -> Result<InstallResult> {
-        let result = self.install_sdk_inner(app, name, query, distribution, cancel).await;
+        let result = self.install_sdk_inner(name, query, distribution, cancel).await;
         match &result {
             // 成功收尾：推送 Done 进度事件，前端据此清除顶部进度条 / 恢复按钮。
             // 修复：此前成功路径从不推送 Done（download 的 Done 只是"下载完成"，随后即被
             // Extracting 覆盖），导致顶部进度条永久停在「解压安装 100%」。
             Ok(_) => {
-                events::emit_progress(
-                    app,
-                    &crate::events::DownloadProgress {
-                        tool: name.to_string(),
-                        version: query.to_string(),
-                        percent: 100.0,
-                        speed_mbps: 0.0,
-                        stage: DownloadStage::Done,
-                        url: None,
-                        note: None,
-                        total_bytes: None,
-                        downloaded_bytes: 0,
-                    },
-                );
+                self.events.emit(ManagerEvent::Progress(DownloadProgress {
+                    tool: name.to_string(),
+                    version: query.to_string(),
+                    percent: 100.0,
+                    speed_mbps: 0.0,
+                    stage: DownloadStage::Done,
+                    url: None,
+                    note: None,
+                    total_bytes: None,
+                    downloaded_bytes: 0,
+                }));
             }
             // 失败兜底：无论调用方是谁（队列 / 直接命令），都推送 Failed 进度事件 + 错误日志，
             // 保证前端进度条不会卡在 100%（用户报告的"解压安装卡住"问题）。
             // 注意：用户主动取消（Cancelled）不当作失败推送（前端按取消处理，无红色错误提示）。
             Err(e) => {
                 if !matches!(e.kind, EnvHiveErrorKind::Cancelled) {
-                    events::emit_progress(
-                        app,
-                        &crate::events::DownloadProgress {
-                            tool: name.to_string(),
-                            version: query.to_string(),
-                            percent: 100.0,
-                            speed_mbps: 0.0,
-                            stage: DownloadStage::Failed,
-                            url: None,
-                            note: None,
-                            total_bytes: None,
-                            downloaded_bytes: 0,
-                        },
-                    );
-                    events::emit_error(app, name, "INSTALL_FAILED", &e.to_string());
+                    self.events.emit(ManagerEvent::Progress(DownloadProgress {
+                        tool: name.to_string(),
+                        version: query.to_string(),
+                        percent: 100.0,
+                        speed_mbps: 0.0,
+                        stage: DownloadStage::Failed,
+                        url: None,
+                        note: None,
+                        total_bytes: None,
+                        downloaded_bytes: 0,
+                    }));
+                    self.events.emit(ManagerEvent::Error {
+                        tool: name.to_string(),
+                        code: "INSTALL_FAILED".into(),
+                        message: e.to_string(),
+                    });
                 }
                 tracing::error!("[{name}] {query} 安装失败: {e}");
             }
@@ -225,7 +220,6 @@ impl EnvHiveManager {
 
     async fn install_sdk_inner(
         &self,
-        app: &AppHandle,
         name: &str,
         query: &str,
         distribution: Option<&str>,
@@ -236,7 +230,12 @@ impl EnvHiveManager {
         let sdk_name = desc.name().to_string();
         let display = desc.display().to_string();
 
-        events::emit_install_status(app, &sdk_name, query, "resolving", Some("解析版本".into()));
+        self.events.emit(ManagerEvent::InstallStatus(InstallStatus {
+            tool: sdk_name.clone(),
+            version: query.to_string(),
+            stage: "resolving".into(),
+            detail: Some("解析版本".into()),
+        }));
         let version = self.resolve_version(&sdk_name, query, distribution).await?;
 
         // 已安装则直接返回
@@ -252,7 +251,12 @@ impl EnvHiveManager {
         }
 
         // 包解析（平台映射 + URL；P2：下载加速镜像对 URL 前缀替换）
-        events::emit_install_status(app, &sdk_name, &version, "resolving", Some("构造下载地址".into()));
+        self.events.emit(ManagerEvent::InstallStatus(InstallStatus {
+            tool: sdk_name.clone(),
+            version: version.clone(),
+            stage: "resolving".into(),
+            detail: Some("构造下载地址".into()),
+        }));
         // Lua 插件的 pre_install 可能发起网络请求（http.get 走 blocking HTTP），
         // 必须放入 spawn_blocking 线程执行，避免在 tokio async 线程 panic 导致闪退。
         let dist_owned = distribution.map(String::from);
@@ -305,9 +309,14 @@ impl EnvHiveManager {
         // 镜像下载失败（如镜像未同步该版本，404）→ 自动回退官方源重试一次，
         // 并通过 download-progress 的 note 提示前端（通知 + 队列消息体现）。
         let dest = self.paths.tool_cache_dir(&sdk_name).join(&pkg.file_name);
+        let sink = self.events.clone();
+        let sink_main = sink.clone();
         let dl = Downloader {
             client: &client,
-            progress: Some(&|p| events::emit_progress(app, p)),
+            progress: Some(&move |p: &DownloadProgress| {
+                tracing::trace!("progress {}/{} {:.0}% {:?}", p.tool, p.version, p.percent, p.stage);
+                sink_main.emit(ManagerEvent::Progress(p.clone()));
+            }),
             tool: &sdk_name,
             version: &version,
             cancel: cancel.clone(),
@@ -317,20 +326,17 @@ impl EnvHiveManager {
             Err(e) if mirrored => {
                 let msg = "镜像下载失败，已回退官方源".to_string();
                 tracing::warn!("[{sdk_name}] {version} {msg}：{e}");
-                events::emit_progress(
-                    app,
-                    &crate::events::DownloadProgress {
-                        tool: sdk_name.clone(),
-                        version: version.clone(),
-                        percent: 0.0,
-                        speed_mbps: 0.0,
-                        stage: DownloadStage::Downloading,
-                        url: Some(original_url.clone()),
-                        note: Some(msg),
-                        total_bytes: None,
-                        downloaded_bytes: 0,
-                    },
-                );
+                self.events.emit(ManagerEvent::Progress(DownloadProgress {
+                    tool: sdk_name.clone(),
+                    version: version.clone(),
+                    percent: 0.0,
+                    speed_mbps: 0.0,
+                    stage: DownloadStage::Downloading,
+                    url: Some(original_url.clone()),
+                    note: Some(msg),
+                    total_bytes: None,
+                    downloaded_bytes: 0,
+                }));
                 // 回退官方源重试（.part 若已有字节，官方源续传同发布文件兼容）
                 pkg.url = original_url;
                 download_and_verify(&dl, &pkg.url, &dest, checksum.as_deref()).await?
@@ -354,9 +360,13 @@ impl EnvHiveManager {
             let mut ef_url = ef.url.clone();
             ef_url = envhive_toolkit::mirror::apply(Some(&mirror_cfg), &ef_url);
             let ef_dest = self.paths.tool_cache_dir(&sdk_name).join(&ef.file_name);
+            let sink_extra = sink.clone();
             let dl = Downloader {
                 client: &client,
-                progress: Some(&|p| events::emit_progress(app, p)),
+                progress: Some(&move |p: &DownloadProgress| {
+                    tracing::trace!("progress {}/{} {:.0}% {:?}", p.tool, p.version, p.percent, p.stage);
+                    sink_extra.emit(ManagerEvent::Progress(p.clone()));
+                }),
                 tool: &sdk_name,
                 version: &version,
                 cancel: cancel.clone(),
@@ -366,21 +376,23 @@ impl EnvHiveManager {
         }
 
         // 解压 + 原子安装 + 验证（阻塞操作放 spawn_blocking）
-        events::emit_install_status(app, &sdk_name, &version, "extracting", Some("解压并安装".into()));
-        events::emit_progress(
-            app,
-            &crate::events::DownloadProgress {
-                tool: sdk_name.clone(),
-                version: version.clone(),
-                percent: 100.0,
-                speed_mbps: 0.0,
-                stage: DownloadStage::Extracting,
-                url: None,
-                note: None,
-                total_bytes: None,
-                downloaded_bytes: 0,
-            },
-        );
+        self.events.emit(ManagerEvent::InstallStatus(InstallStatus {
+            tool: sdk_name.clone(),
+            version: version.clone(),
+            stage: "extracting".into(),
+            detail: Some("解压并安装".into()),
+        }));
+        self.events.emit(ManagerEvent::Progress(DownloadProgress {
+            tool: sdk_name.clone(),
+            version: version.clone(),
+            percent: 100.0,
+            speed_mbps: 0.0,
+            stage: DownloadStage::Extracting,
+            url: None,
+            note: None,
+            total_bytes: None,
+            downloaded_bytes: 0,
+        }));
 
         let paths_clone = self.paths.clone();
         let version_clone = version.clone();
@@ -422,7 +434,12 @@ impl EnvHiveManager {
         // P2：使用统计（安装也算一次使用）
         crate::usage::record_use(&self.paths, &sdk_name, &version, None);
 
-        events::emit_install_status(app, &sdk_name, &version, "done", Some("安装完成".into()));
+        self.events.emit(ManagerEvent::InstallStatus(InstallStatus {
+            tool: sdk_name.clone(),
+            version: version.clone(),
+            stage: "done".into(),
+            detail: Some("安装完成".into()),
+        }));
         tracing::info!("[{sdk_name}] {version} 安装完成");
 
         Ok(InstallResult {
@@ -465,7 +482,7 @@ impl EnvHiveManager {
     // 全局切换（roadmap C）
     // -----------------------------------------------------------------------
 
-    pub async fn switch_global(&self, app: &AppHandle, name: &str, query: &str) -> Result<SwitchResult> {
+    pub async fn switch_global(&self, name: &str, query: &str) -> Result<SwitchResult> {
         let tool = self.lookup_tool(name)?;
         let desc = tool.desc();
         let sdk_name = desc.name().to_string();
@@ -496,7 +513,10 @@ impl EnvHiveManager {
         // 3. Windows：注册表 PATH + JAVA_HOME + 广播
         self.sync_user_env(&chain)?;
 
-        events::emit_version_changed(app, &sdk_name, &version);
+        self.events.emit(ManagerEvent::VersionChanged(VersionChanged {
+            tool: sdk_name.clone(),
+            version: version.clone(),
+        }));
         tracing::info!("[{sdk_name}] 全局切换 -> {version}（{}）", tool.bin_dir(&self.paths).display());
 
         // P2：使用统计（切换记录）

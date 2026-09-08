@@ -1,6 +1,6 @@
 //! 工具 域命令：列表 / 详情 / 版本 / 安装 / 卸载 / 全局切换 / 下载队列
 
-use tauri::{AppHandle, State};
+use tauri::State;
 
 use crate::error::{EnvHiveError, Result};
 use crate::tool::{InstalledInfo, InstallResult, ToolInfo, SwitchResult};
@@ -72,13 +72,12 @@ pub fn search_versions(
 /// v2：`distribution` = 发行商 key（Lua 插件发行商维度）
 #[tauri::command]
 pub async fn install_tool(
-    app: AppHandle,
     state: State<'_, AppState>,
     name: String,
     version: String,
     distribution: Option<String>,
 ) -> Result<InstallResult> {
-    state.manager.install_tool(&app, &name, &version, distribution.as_deref(), None).await
+    state.manager.install_tool(&name, &version, distribution.as_deref(), None).await
 }
 
 /// 卸载 工具 版本
@@ -90,12 +89,11 @@ pub fn uninstall_tool(state: State<'_, AppState>, name: String, version: String)
 /// 全局切换版本（写 Global TOML + 重建链接 + 注册表 PATH）
 #[tauri::command]
 pub async fn switch_version(
-    app: AppHandle,
     state: State<'_, AppState>,
     name: String,
     version: String,
 ) -> Result<SwitchResult> {
-    state.manager.switch_global(&app, &name, &version).await
+    state.manager.switch_global(&name, &version).await
 }
 
 /// 解除全局使用
@@ -123,7 +121,6 @@ pub fn list_installed(state: State<'_, AppState>) -> Result<Vec<InstalledInfo>> 
 /// 去重：队列中已有同 tool+version+distribution 的排队/执行中任务时直接复用（reused=true），不重复入队。
 #[tauri::command]
 pub fn enqueue_install(
-    app: AppHandle,
     state: State<'_, AppState>,
     name: String,
     version: String,
@@ -133,13 +130,13 @@ pub fn enqueue_install(
     // 入队后立即推送队列快照：让前端实时看到新任务（含「排队中」状态）。
     // 否则新任务要等 worker 状态切换（running/done）才有事件，多个任务连续添加时
     // 队列页始终只显示当前正在执行的那一个。
-    state.queue.emit_snapshot(&app);
+    state.queue.emit_snapshot();
     // 复用已有任务时无需再 spawn worker（原任务已在队列中，worker 会消费到它）
     if !outcome.reused {
         let queue = state.queue.clone();
         let manager = state.manager.clone();
         tauri::async_runtime::spawn(async move {
-            queue.run_worker(app, manager).await;
+            queue.run_worker(manager).await;
         });
     }
     Ok(outcome)
@@ -159,16 +156,16 @@ pub fn cancel_task(state: State<'_, AppState>, id: u64) -> Result<()> {
 
 /// 全部取消：排队中直接取消；执行中请求取消（worker 收尾定终态）。返回受影响任务数。
 #[tauri::command]
-pub fn queue_cancel_all(app: AppHandle, state: State<'_, AppState>) -> Result<usize> {
+pub fn queue_cancel_all(state: State<'_, AppState>) -> Result<usize> {
     let n = state.queue.cancel_all();
-    state.queue.emit_snapshot(&app);
+    state.queue.emit_snapshot();
     Ok(n)
 }
 
 /// 清空终态任务（Done/Failed/Cancelled），保留排队中/执行中。返回移除数量。
 #[tauri::command]
-pub fn queue_clear_finished(app: AppHandle, state: State<'_, AppState>) -> Result<usize> {
+pub fn queue_clear_finished(state: State<'_, AppState>) -> Result<usize> {
     let n = state.queue.clear_finished();
-    state.queue.emit_snapshot(&app);
+    state.queue.emit_snapshot();
     Ok(n)
 }

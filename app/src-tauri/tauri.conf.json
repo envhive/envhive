@@ -4,9 +4,9 @@
   "version": "0.1.0",
   "identifier": "com.envhive.desktop",
   "build": {
-    "beforeDevCommand": "cargo build --release -p envhive-cli --manifest-path src-tauri/Cargo.toml && node scripts/copy-cli.mjs && npm run dev",
+    "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "npm run build && cargo build --release -p envhive-cli --manifest-path src-tauri/Cargo.toml && node scripts/copy-cli.mjs",
+    "beforeBuildCommand": "npm run build",
     "frontendDist": "../dist"
   },
   "app": {
@@ -25,7 +25,6 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "externalBin": ["binaries/envhive-cli"],
     "icon": [
       "icons/32x32.png",
       "icons/128x128.png",

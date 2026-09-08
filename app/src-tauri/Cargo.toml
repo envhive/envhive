@@ -1,5 +1,6 @@
+# 独立 workspace：隔离于仓库根 workspace（crates/* 与 cli）
+# 共享 crate 位于仓库根 crates/，以 path 依赖引用
 [workspace]
-members = ["crates/envhive-core", "crates/envhive-toolkit", "crates/envhive-manager", "crates/envhive-cli"]
 resolver = "2"
 
 [package]
@@ -16,9 +17,9 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
-envhive-core = { path = "crates/envhive-core" }
-envhive-toolkit = { path = "crates/envhive-toolkit" }
-envhive-manager = { path = "crates/envhive-manager" }
+envhive-core = { path = "../../crates/envhive-core" }
+envhive-toolkit = { path = "../../crates/envhive-toolkit" }
+envhive-manager = { path = "../../crates/envhive-manager" }
 tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-single-instance = "2"
 tauri-plugin-updater = "2"

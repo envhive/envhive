@@ -6,6 +6,7 @@
 #![allow(dead_code)]
 
 mod commands;
+mod sink;
 
 // envhive-core 重导出：保持 crate::config / crate::error / crate::pathmeta /
 // crate::toml_chain / crate::util / crate::logging / crate::env 路径可用
@@ -28,6 +29,7 @@ use crate::config::AppConfig;
 use crate::manager::EnvHiveManager;
 use crate::pathmeta::PathMeta;
 use crate::queue::QueueManager;
+use crate::sink::TauriSink;
 
 /// 构建 HTTP 客户端（代理第 1 层：蜂巢下载代理；仅应用内生效）
 fn build_http_client(cfg: &AppConfig) -> reqwest::Client {
@@ -164,14 +166,15 @@ pub fn run() {
         }
     }
 
-    // 6. Manager + 队列
+    // 6. Manager + 队列（事件经 TauriSink 分发；AppHandle 在 setup 阶段延迟绑定）
     let client = build_http_client(&config);
     // 插件同步需要的数据（config 随后移入 manager，先取引用）
     let reg_addrs = config.registry_addresses();
-    let manager = EnvHiveManager::new(config, paths, client);
+    let sink = Arc::new(TauriSink::new());
+    let manager = EnvHiveManager::with_event_sink(config, paths, client, sink.clone());
     let sync_paths = manager.paths.clone();
     let sync_client = manager.client();
-    let queue = Arc::new(QueueManager::new());
+    let queue = Arc::new(QueueManager::with_event_sink(sink.clone()));
 
     tauri::Builder::default()
         // 单实例锁：同一时刻只允许一个 envhive.exe 进程运行。
@@ -259,6 +262,8 @@ pub fn run() {
         ])
         .setup(move |app| {
             tracing::info!("envhive v{} 启动（平台 {} {}）", env!("CARGO_PKG_VERSION"), std::env::consts::OS, std::env::consts::ARCH);
+            // 绑定 AppHandle：安装/切换/队列事件自此开始推送前端（与改造前事件名一致）
+            sink.bind(app.handle().clone());
             // P2：开机自启动 --autostart 参数 → 隐藏主窗口（常驻托盘）
             let args: Vec<String> = std::env::args().collect();
             if args.iter().any(|a| a == "--autostart") {

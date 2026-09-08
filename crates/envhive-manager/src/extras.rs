@@ -634,8 +634,8 @@ mod tests {
 
     /// 仓库产物路径：`<repo>/plugins/zip/<name>.zip`（build_plugins.py 生成的真实产物）
     fn repo_zip(name: &str) -> std::path::PathBuf {
-        // CARGO_MANIFEST_DIR = <repo>/app/src-tauri/crates/envhive-manager → 上溯 4 级到仓库根
-        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../plugins/zip").join(format!("{name}.zip"))
+        // CARGO_MANIFEST_DIR = <repo>/app/src-tauri/crates/envhive-manager → 上溯 3 级到仓库根
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../plugins/zip").join(format!("{name}.zip"))
     }
 
     /// manifest 内相对 downloadUrl 按 manifest.json 所在目录解析为完整 URL（绝对 URL 保持原样）

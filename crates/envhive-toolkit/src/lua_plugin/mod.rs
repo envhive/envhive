@@ -190,8 +190,8 @@ mod tests {
     /// 读取仓库插件源码 fixture：`<repo>/plugins/src/<name>/plugin.lua`
     /// （插件不再内置，源码统一维护在仓库 plugins/src/ 下）
     fn fixture_script(name: &str) -> String {
-        // CARGO_MANIFEST_DIR = <repo>/app/src-tauri/crates/envhive-toolkit → 上溯 4 级到仓库根
-        let base = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../plugins/src");
+        // CARGO_MANIFEST_DIR = <repo>/app/src-tauri/crates/envhive-toolkit → 上溯 3 级到仓库根
+        let base = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../plugins/src");
         std::fs::read_to_string(base.join(name).join("plugin.lua"))
             .unwrap_or_else(|e| panic!("fixture 插件 {name} 缺失: {e}"))
     }

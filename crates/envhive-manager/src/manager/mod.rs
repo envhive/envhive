@@ -26,6 +26,8 @@ use envhive_toolkit::registry::RegistryManager;
 use envhive_toolkit::tool::provider;
 use envhive_toolkit::tool::{Tool, ToolDescriptor};
 
+use crate::events::{EventSink, NullSink};
+
 /// 版本列表缓存条目
 struct VersionCacheEntry {
     fetched_at: i64,
@@ -44,10 +46,22 @@ pub struct EnvHiveManager {
     version_cache: Mutex<HashMap<String, VersionCacheEntry>>,
     /// 镜像源管理器（roadmap H）
     pub registry: RegistryManager,
+    /// 事件接收器（桌面=Tauri 事件，CLI/TUI=channel；默认丢弃）
+    events: Arc<dyn EventSink>,
 }
 
 impl EnvHiveManager {
     pub fn new(config: AppConfig, paths: PathMeta, client: reqwest::Client) -> Self {
+        Self::with_event_sink(config, paths, client, Arc::new(NullSink))
+    }
+
+    /// 注入事件接收器（桌面端传 Tauri 实现；CLI/TUI 传 channel 实现）
+    pub fn with_event_sink(
+        config: AppConfig,
+        paths: PathMeta,
+        client: reqwest::Client,
+        events: Arc<dyn EventSink>,
+    ) -> Self {
         // 清理旧版（第 3 层）写入用户环境变量的代理残留（升级后一次性清理）
         let _ = envhive_toolkit::registry::proxy::cleanup_legacy_env_vars(&config.proxy);
         // 插件内 http.get 与宿主下载共享同一代理配置（应用内生效）
@@ -61,6 +75,7 @@ impl EnvHiveManager {
             open_tools: Mutex::new(HashMap::new()),
             version_cache: Mutex::new(HashMap::new()),
             registry: RegistryManager::new(),
+            events,
         }
     }
 
@@ -143,8 +158,8 @@ mod tests {
     /// 读取仓库插件源码 fixture：`<repo>/plugins/src/<name>/plugin.lua`
     /// （插件不再内置，源码统一维护在仓库 plugins/src/ 下）
     fn fixture_script(name: &str) -> String {
-        // CARGO_MANIFEST_DIR = <repo>/app/src-tauri/crates/envhive-manager → 上溯 4 级到仓库根
-        let base = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../../plugins/src");
+        // CARGO_MANIFEST_DIR = <repo>/app/src-tauri/crates/envhive-manager → 上溯 3 级到仓库根
+        let base = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../../plugins/src");
         std::fs::read_to_string(base.join(name).join("plugin.lua"))
             .unwrap_or_else(|e| panic!("fixture 插件 {name} 缺失: {e}"))
     }
