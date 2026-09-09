@@ -59,7 +59,7 @@ function addRegistryEntry() {
   const name = newRegistryName.value.trim();
   const url = newRegistryUrl.value.trim().replace(/\/+$/, "");
   if (!name) return showMsg("请输入仓库名（如：官方gitee）");
-  if (!url) return showMsg("请输入 manifest.json 完整地址（如：https://raw.giteeusercontent.com/envhive/envhive/raw/main/manifest.json）");
+  if (!url) return showMsg("请输入 manifest.json 完整地址（如：https://raw.giteeusercontent.com/envhive/envhive/raw/main/plugins/manifest.json）");
   if (app.registryEntries.some((e) => e.url === url)) return showMsg("该仓库地址已存在");
   app.registryEntries.push({ name, url });
   newRegistryName.value = "";
@@ -165,7 +165,7 @@ function removeRegistryEntry(i: number) {
               />
               <n-input
                 v-model:value="newRegistryUrl"
-                placeholder="manifest.json 完整地址（如：https://raw.giteeusercontent.com/envhive/envhive/raw/main/manifest.json）"
+                placeholder="manifest.json 完整地址（如：https://raw.giteeusercontent.com/envhive/envhive/raw/main/plugins/manifest.json）"
                 @keyup.enter="addRegistryEntry"
               />
               <n-button size="small" @click="addRegistryEntry">添加</n-button>
@@ -183,7 +183,7 @@ function removeRegistryEntry(i: number) {
         </div>
         <div class="settings-row">
           <span class="muted config-hint">
-            配置文件：{{ app.bootstrap ? `${app.bootstrap.installDir.replace(/[\\/][^\\/]*$/, "")}config.yaml` : "~/.envhive/config.yaml" }}
+            配置文件：{{ app.bootstrap?.configFile || "~/.envhive/config.yaml" }}
           </span>
         </div>
       </div>

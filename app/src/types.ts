@@ -252,6 +252,8 @@ export interface BootstrapInfo {
     installDir: string;
     toolsDir: string;
     logsDir: string;
+    /** 全局配置文件真实路径（~/.envhive/config.yaml） */
+    configFile: string;
     configWritable: boolean;
 }
 

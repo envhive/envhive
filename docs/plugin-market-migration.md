@@ -8,10 +8,11 @@
 > 见 §9）· zip 打包分发 · 首启引导一键装。
 
 > **✅ 已落地（2026-08-14）**：采用「同仓库」变体 —— 插件不迁往独立仓库，而是留在
-> **本项目仓库根 `plugins/`**（`plugins/<name>.zip` + 仓库根 `manifest.json`），
-> 下载地址 = `https://raw.giteeusercontent.com/envhive/envhive/raw/main/plugins/<name>.zip`
-> （备用 `https://raw.githubusercontent.com/envhive/envhive/main/...`）。
-> 具体实现见 `scripts/build_plugins.py`、`plugins/README.md`、`config.rs`（默认仓库地址）、
+> **本项目仓库 `plugins/`**（`plugins/src/` 源码 + `plugins/zip/<name>.zip` + `plugins/manifest.json`，
+> 仓库根不再生成 manifest.json），
+> 下载地址 = `https://raw.giteeusercontent.com/envhive/envhive/raw/main/plugins/zip/<name>.zip`
+> （备用 `https://raw.githubusercontent.com/envhive/envhive/main/plugins/...`）。
+> 具体实现见 `plugins/build_plugins.py`、`plugins/zip/README.md`、`config.rs`（默认仓库地址）、
 > `extras.rs`（zip 安装链路 + 启动同步 `sync_remote_plugins`）。以下设计除仓库布局外均已按此执行。
 
 ---

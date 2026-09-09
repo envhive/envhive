@@ -19,10 +19,10 @@
 提供 `available(ctx)` / `pre_install(ctx)` / `post_install(ctx)` / `env_keys(ctx)` /
 `pre_uninstall(ctx)` 生命周期 hook）。
 
-- 插件**全部从 Git 仓库下载**：仓库根 `manifest.json`（插件市场填写的仓库地址即 manifest.json 完整地址，
-  如 `https://raw.giteeusercontent.com/envhive/envhive/raw/main/manifest.json`（Gitee，默认，仓库名「官方gitee」）
-  或 `https://raw.githubusercontent.com/envhive/envhive/main/manifest.json`（GitHub，备用，仓库名「官方github」）；
-  zip 包位于 `plugins/<name>.zip`，manifest 内 `downloadUrl` 可为完整下载地址或相对 manifest.json
+- 插件**全部从 Git 仓库下载**：`plugins/manifest.json`（插件市场填写的仓库地址即 manifest.json 完整地址，
+  如 `https://raw.giteeusercontent.com/envhive/envhive/raw/main/plugins/manifest.json`（Gitee，默认，仓库名「官方gitee」）
+  或 `https://raw.githubusercontent.com/envhive/envhive/main/plugins/manifest.json`（GitHub，备用，仓库名「官方github」）；
+  zip 包位于 `plugins/zip/<name>.zip`，manifest 内 `downloadUrl` 可为完整下载地址或相对 manifest.json
   所在目录的路径）；应用启动时后台自动同步缺失插件，也可在「插件市场」手动安装/更新；
 - **插件协议**（`docs/lua-plugin-design.md`）：
   - 支持「发行商 × 版本」两级维度（`TOOL.distributions`），Java 插件含 8 个发行商；

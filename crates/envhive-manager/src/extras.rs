@@ -198,9 +198,9 @@ pub fn check_all_conflicts(paths: &PathMeta, manager: &EnvHiveManager) -> Vec<Co
 // ===========================================================================
 // 2. 远程注册表（P1·开放）：manifest 拉取 + 插件安装（zip / 直链）
 //    插件不再内置，全部从 Git 仓库（Gitee / GitHub raw 直链）下载：
-//    - 仓库地址即 manifest.json 完整地址（如 `{BASE}/manifest.json`，BASE 为仓库 raw 根）；
+//    - 仓库地址即 manifest.json 完整地址（当前官方仓库如 `{BASE}/plugins/manifest.json`，BASE 为仓库 raw 根）；
 //    - 插件包：manifest 内 downloadUrl 为完整下载地址，或相对 manifest.json 所在目录的路径
-//      （如 `plugins/zip/<name>.zip`）。
+//      （如 `zip/<name>.zip`）。
 // ===========================================================================
 
 /// 远程插件信息（manifest 条目；schema v2，向后兼容 v1）
@@ -211,7 +211,7 @@ pub struct RemotePluginInfo {
     pub version: String,
     #[serde(default)]
     pub description: String,
-    /// 插件包下载地址（manifest 内可为相对路径，如 `plugins/zip/go.zip`，拉取时按 manifest.json 所在目录解析）
+    /// 插件包下载地址（manifest 内可为相对路径，如 `zip/go.zip`，拉取时按 manifest.json 所在目录解析）
     pub download_url: String,
     /// 插件类型："lua" | "toml"，缺省 toml（兼容 v1 manifest）
     #[serde(default)]
@@ -251,7 +251,8 @@ fn resolve_download_url(url: &mut String, base: &str) {
 /// 计算候选 (manifest 完整 URL, 相对 downloadUrl 解析 base) 列表。
 ///
 /// - 地址已以 `manifest.json` 结尾：唯一候选 = 该地址，base = 去掉文件名的目录；
-/// - 否则视为仓库根（旧格式）：先试 `{base}/manifest.json`（新结构），再试 `{base}/plugins/manifest.json`（历史结构）。
+/// - 否则视为仓库根（旧格式）：先试 `{base}/manifest.json`（历史仓库布局），
+///   再试 `{base}/plugins/manifest.json`（当前官方仓库布局）。
 fn manifest_candidates(address: &str) -> Vec<(String, String)> {
     let addr = address.trim().trim_end_matches('/');
     if addr.is_empty() {
@@ -270,7 +271,7 @@ fn manifest_candidates(address: &str) -> Vec<(String, String)> {
 
 /// 拉取远程插件 manifest。
 ///
-/// `address` 为 **manifest.json 完整地址**（新格式，如 `https://raw.giteeusercontent.com/envhive/envhive/raw/main/manifest.json`），
+/// `address` 为 **manifest.json 完整地址**（如 `https://raw.giteeusercontent.com/envhive/envhive/raw/main/plugins/manifest.json`），
 /// 直接拉取；兼容旧格式的仓库根地址（无 manifest.json 后缀）时依次尝试 `{base}/manifest.json`、
 /// `{base}/plugins/manifest.json`。相对 downloadUrl 一律按 manifest.json 所在目录解析。
 pub async fn fetch_remote_manifest(address: &str, client: &reqwest::Client) -> Result<Vec<RemotePluginInfo>> {

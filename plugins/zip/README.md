@@ -10,10 +10,10 @@
 
 | 平台 | 仓库 | manifest 地址 | 插件包地址 |
 |---|---|---|---|
-| Gitee（默认，国内快） | `https://gitee.com/envhive/envhive` | `https://raw.giteeusercontent.com/envhive/envhive/raw/main/manifest.json` | `https://raw.giteeusercontent.com/envhive/envhive/raw/main/plugins/<name>.zip` |
-| GitHub（海外） | `https://github.com/envhive/envhive` | `https://raw.githubusercontent.com/envhive/envhive/main/manifest.json` | `https://raw.githubusercontent.com/envhive/envhive/main/plugins/<name>.zip` |
+| Gitee（默认，国内快） | `https://gitee.com/envhive/envhive` | `https://raw.giteeusercontent.com/envhive/envhive/raw/main/plugins/manifest.json` | `https://raw.giteeusercontent.com/envhive/envhive/raw/main/plugins/zip/<name>.zip` |
+| GitHub（海外） | `https://github.com/envhive/envhive` | `https://raw.githubusercontent.com/envhive/envhive/main/plugins/manifest.json` | `https://raw.githubusercontent.com/envhive/envhive/main/plugins/zip/<name>.zip` |
 
-> 宿主默认配置 `app/src-tauri/crates/envhive-core/src/config.rs` 中的 `DEFAULT_REGISTRY_ADDRESS` 与上述一致；
+> 宿主默认配置 `crates/envhive-core/src/config.rs` 中的 `DEFAULT_REGISTRY_ADDRESS` 与上述一致；
 > 用户可在「设置 → 插件仓库地址」中覆盖。
 
 ## 目录结构
@@ -30,15 +30,15 @@ plugins/
 └── ...
 ```
 
-仓库根 `manifest.json`：插件索引（schema v2），`downloadUrl` 为相对路径
-`plugins/<name>.zip`，宿主按 `{BASE}/{downloadUrl}` 解析为完整下载地址。
+`plugins/manifest.json`：插件索引（schema v2），`downloadUrl` 为相对 plugins/ 目录的路径
+`zip/<name>.zip`，宿主按 manifest.json 所在目录解析为完整下载地址。
 
 ## 重新构建
 
 改完 `plugins/src/<name>/` 下的源码后，重新打 zip 并刷新 manifest：
 
 ```bash
-python plugins/build_plugins.py            # 打 zip + 生成仓库根 manifest.json（含 plugins/ 兼容版）
+python plugins/build_plugins.py            # 打 zip + 生成 plugins/manifest.json（仓库根不再生成）
 python plugins/build_plugins.py --verify   # 仅校验 zip 与 manifest 一致性
 ```
 

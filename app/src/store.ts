@@ -281,8 +281,8 @@ export function normalizeRegistryEntries(raw: (RegistryEntry | string)[]): Regis
 if (import.meta.env.DEV && typeof window !== "undefined" && new URLSearchParams(window.location.search).get("mockplugins") === "1") {
   const now = Math.floor(Date.now() / 1000);
   state.registryEntries = [
-    { name: "官方gitee", url: "https://raw.giteeusercontent.com/envhive/envhive/raw/main/manifest.json" },
-    { name: "官方github", url: "https://raw.githubusercontent.com/envhive/envhive/main/manifest.json" },
+    { name: "官方gitee", url: "https://raw.giteeusercontent.com/envhive/envhive/raw/main/plugins/manifest.json" },
+    { name: "官方github", url: "https://raw.githubusercontent.com/envhive/envhive/main/plugins/manifest.json" },
   ];
   state.remoteRegistry = state.registryEntries[0].url;
   state.remotePlugins = [];

@@ -82,7 +82,7 @@ pub struct StorageConfig {
 }
 
 /// 远程插件仓库条目：name = 仓库名（插件市场下拉显示），url = manifest.json 完整地址
-/// （如 `https://raw.githubusercontent.com/envhive/envhive/main/manifest.json`）
+/// （如 `https://raw.githubusercontent.com/envhive/envhive/main/plugins/manifest.json`）
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RegistryEntry {
@@ -100,12 +100,14 @@ pub enum RegistryAddress {
     Plain(String),
 }
 
-/// 默认远程插件仓库：Gitee raw 直链 manifest.json（国内优先，仓库名「官方gitee」）
+/// 默认远程插件仓库：Gitee raw 直链 `plugins/manifest.json`（国内优先，仓库名「官方gitee」）
 pub const DEFAULT_REGISTRY_NAME: &str = "官方gitee";
-pub const DEFAULT_REGISTRY_ADDRESS: &str = "https://raw.giteeusercontent.com/envhive/envhive/raw/main/manifest.json";
-/// 备用远程插件仓库：GitHub raw 直链 manifest.json（仓库名「官方github」）
+pub const DEFAULT_REGISTRY_ADDRESS: &str =
+    "https://raw.giteeusercontent.com/envhive/envhive/raw/main/plugins/manifest.json";
+/// 备用远程插件仓库：GitHub raw 直链 `plugins/manifest.json`（仓库名「官方github」）
 pub const DEFAULT_REGISTRY_NAME_FALLBACK: &str = "官方github";
-pub const DEFAULT_REGISTRY_ADDRESS_FALLBACK: &str = "https://raw.githubusercontent.com/envhive/envhive/main/manifest.json";
+pub const DEFAULT_REGISTRY_ADDRESS_FALLBACK: &str =
+    "https://raw.githubusercontent.com/envhive/envhive/main/plugins/manifest.json";
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -338,20 +340,20 @@ mod tests {
 registry:
   addresses:
     - name: 官方gitee
-      url: https://raw.giteeusercontent.com/envhive/envhive/raw/main/manifest.json
+      url: https://raw.giteeusercontent.com/envhive/envhive/raw/main/plugins/manifest.json
     - name: 官方github
-      url: https://raw.githubusercontent.com/envhive/envhive/main/manifest.json
+      url: https://raw.githubusercontent.com/envhive/envhive/main/plugins/manifest.json
 "#;
         let cfg: AppConfig = serde_yaml::from_str(yaml).unwrap();
         let entries = cfg.registry.entries();
         assert_eq!(entries.len(), 2);
         assert_eq!(entries[0].name, "官方gitee");
-        assert_eq!(entries[0].url, "https://raw.giteeusercontent.com/envhive/envhive/raw/main/manifest.json");
+        assert_eq!(entries[0].url, "https://raw.giteeusercontent.com/envhive/envhive/raw/main/plugins/manifest.json");
         assert_eq!(entries[1].name, "官方github");
-        assert_eq!(entries[1].url, "https://raw.githubusercontent.com/envhive/envhive/main/manifest.json");
+        assert_eq!(entries[1].url, "https://raw.githubusercontent.com/envhive/envhive/main/plugins/manifest.json");
         assert_eq!(cfg.registry_addresses(), vec![
-            "https://raw.giteeusercontent.com/envhive/envhive/raw/main/manifest.json",
-            "https://raw.githubusercontent.com/envhive/envhive/main/manifest.json",
+            "https://raw.giteeusercontent.com/envhive/envhive/raw/main/plugins/manifest.json",
+            "https://raw.githubusercontent.com/envhive/envhive/main/plugins/manifest.json",
         ]);
     }
 
@@ -408,15 +410,15 @@ registry:
     fn test_registry_selected_round_trip() {
         let yaml = r#"
 registry:
-  selected: https://raw.githubusercontent.com/envhive/envhive/main/manifest.json
+  selected: https://raw.githubusercontent.com/envhive/envhive/main/plugins/manifest.json
   addresses:
     - name: 官方gitee
-      url: https://raw.giteeusercontent.com/envhive/envhive/raw/main/manifest.json
+      url: https://raw.giteeusercontent.com/envhive/envhive/raw/main/plugins/manifest.json
 "#;
         let cfg: AppConfig = serde_yaml::from_str(yaml).unwrap();
         assert_eq!(
             cfg.registry.selected.as_deref(),
-            Some("https://raw.githubusercontent.com/envhive/envhive/main/manifest.json")
+            Some("https://raw.githubusercontent.com/envhive/envhive/main/plugins/manifest.json")
         );
         let s = serde_yaml::to_string(&cfg).unwrap();
         let back: AppConfig = serde_yaml::from_str(&s).unwrap();

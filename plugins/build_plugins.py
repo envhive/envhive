@@ -3,15 +3,15 @@
 
 扫描 `plugins/src/<name>/` 下的插件源码（plugin.lua + icon.svg + lib/），
 为每个插件生成 `plugins/zip/<name>.zip`（zip 根目录直接放插件文件，不打一层 <name>/），
-并在**仓库根** `manifest.json` 生成清单（schema v2，downloadUrl 为相对 manifest.json
-所在目录的路径 `plugins/zip/<name>.zip`），同时生成兼容版 `plugins/manifest.json`
-（downloadUrl 为相对 `plugins/` 目录的 `zip/<name>.zip`，供旧版仓库根地址拉取）。
+并生成 `plugins/manifest.json` 清单（schema v2，downloadUrl 为相对 manifest.json
+所在目录即 `plugins/` 的路径 `zip/<name>.zip`）。仓库根不再生成 manifest.json，
+若存在旧产物会在构建时清理。
 
-下载地址约定（宿主默认仓库地址，见 app/src-tauri/crates/envhive-core/src/config.rs）：
-- Gitee : https://raw.giteeusercontent.com/envhive/envhive/raw/main/manifest.json（仓库名「官方gitee」）
-- GitHub: https://raw.githubusercontent.com/envhive/envhive/main/manifest.json（仓库名「官方github」）
+下载地址约定（宿主默认仓库地址，见 crates/envhive-core/src/config.rs）：
+- Gitee : https://raw.giteeusercontent.com/envhive/envhive/raw/main/plugins/manifest.json（仓库名「官方gitee」）
+- GitHub: https://raw.githubusercontent.com/envhive/envhive/main/plugins/manifest.json（仓库名「官方github」）
 manifest 内 downloadUrl 可为完整下载地址，或相对 manifest.json 所在目录的路径
-（如 `plugins/zip/<name>.zip`），宿主按 manifest.json 所在目录解析。
+（如 `zip/<name>.zip`），宿主按 manifest.json 所在目录解析。
 
 用法：
     python plugins/build_plugins.py            # 全量构建
@@ -30,10 +30,10 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 PLUGINS_DIR = REPO_ROOT / "plugins"
 SRC_DIR = PLUGINS_DIR / "src"
 ZIP_DIR = PLUGINS_DIR / "zip"
-# 主 manifest：仓库根（新地址，downloadUrl 相对仓库根 = manifest.json 所在目录）
-MANIFEST_PATH = REPO_ROOT / "manifest.json"
-# 兼容 manifest：plugins/ 目录（旧地址 {base}/plugins/manifest.json，downloadUrl 相对 plugins/）
-LEGACY_MANIFEST_PATH = PLUGINS_DIR / "manifest.json"
+# 唯一 manifest：plugins/ 目录（默认仓库地址 {base}/plugins/manifest.json，downloadUrl 相对 plugins/ = manifest.json 所在目录）
+MANIFEST_PATH = PLUGINS_DIR / "manifest.json"
+# 历史产物：仓库根 manifest.json（旧默认地址 {base}/manifest.json），构建时清理，不再生成
+LEGACY_ROOT_MANIFEST_PATH = REPO_ROOT / "manifest.json"
 
 # 必需 hook（静态检查 plugin.lua 中是否出现函数定义）
 REQUIRED_HOOKS = ("available", "pre_install")
@@ -159,8 +159,8 @@ def build() -> None:
             "format": "zip",
             "description": f"{meta.get('display') or name}（{meta.get('category', '')}）",
             "homepage": meta.get("homepage") or "",
-            # 主 manifest 位于仓库根：相对路径即相对仓库根（= manifest.json 所在目录）
-            "downloadUrl": zpath.relative_to(REPO_ROOT).as_posix(),
+            # manifest 位于 plugins/ 目录：相对路径即相对 plugins/（= manifest.json 所在目录）
+            "downloadUrl": zpath.relative_to(PLUGINS_DIR).as_posix(),
             "sha256": sha256_hex(zpath),
             "size": zpath.stat().st_size,
         })
@@ -172,40 +172,31 @@ def build() -> None:
     print(f"[manifest] {MANIFEST_PATH.relative_to(REPO_ROOT).as_posix()} "
           f"（{len(plugins)} 个插件）")
 
-    # 兼容版：plugins/manifest.json（旧地址 {base}/plugins/manifest.json 拉取时，
-    # 相对 downloadUrl 按 manifest.json 所在目录 = plugins/ 解析）
-    legacy_plugins = []
-    for p in plugins:
-        lp = dict(p)
-        lp["downloadUrl"] = str(Path(p["downloadUrl"]).relative_to(PLUGINS_DIR.name)).replace("\\", "/")
-        legacy_plugins.append(lp)
-    legacy_manifest = {"schemaVersion": 2, "plugins": legacy_plugins}
-    LEGACY_MANIFEST_PATH.write_text(json.dumps(legacy_manifest, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
-    print(f"[manifest] {LEGACY_MANIFEST_PATH.relative_to(REPO_ROOT).as_posix()} "
-          f"（兼容版，{len(legacy_plugins)} 个插件）")
+    # 清理历史产物：仓库根 manifest.json 不再生成（旧默认地址 {base}/manifest.json 已废弃）
+    if LEGACY_ROOT_MANIFEST_PATH.exists():
+        LEGACY_ROOT_MANIFEST_PATH.unlink()
+        print(f"[cleanup] 已移除历史产物 {LEGACY_ROOT_MANIFEST_PATH.relative_to(REPO_ROOT).as_posix()} "
+              f"（仓库根不再生成 manifest）")
 
 
 def verify() -> int:
     """校验 zip 内容与 manifest 的 name/sha256/size 一致（不重打）。"""
-    manifests = [(MANIFEST_PATH, REPO_ROOT), (LEGACY_MANIFEST_PATH, PLUGINS_DIR)]
+    if not MANIFEST_PATH.exists():
+        print(f"{MANIFEST_PATH.relative_to(REPO_ROOT)} 不存在，请先运行构建", file=sys.stderr)
+        return 1
+    manifest = json.loads(MANIFEST_PATH.read_text(encoding="utf-8"))
     ok = True
-    for manifest_path, base in manifests:
-        if not manifest_path.exists():
-            print(f"{manifest_path.relative_to(REPO_ROOT)} 不存在，请先运行构建", file=sys.stderr)
+    for p in manifest["plugins"]:
+        zpath = PLUGINS_DIR / p["downloadUrl"]
+        if not zpath.exists():
+            print(f"[missing] {MANIFEST_PATH.relative_to(REPO_ROOT)}: {p['downloadUrl']}", file=sys.stderr)
             ok = False
             continue
-        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        for p in manifest["plugins"]:
-            zpath = base / p["downloadUrl"]
-            if not zpath.exists():
-                print(f"[missing] {manifest_path.relative_to(REPO_ROOT)}: {p['downloadUrl']}", file=sys.stderr)
-                ok = False
-                continue
-            if sha256_hex(zpath) != p["sha256"]:
-                print(f"[stale] {manifest_path.relative_to(REPO_ROOT)}: {p['downloadUrl']} sha256 与 manifest 不一致，请重新构建", file=sys.stderr)
-                ok = False
-        if ok:
-            print(f"[verify] {manifest_path.relative_to(REPO_ROOT)} 全部 {len(manifest['plugins'])} 个 zip 校验通过")
+        if sha256_hex(zpath) != p["sha256"]:
+            print(f"[stale] {MANIFEST_PATH.relative_to(REPO_ROOT)}: {p['downloadUrl']} sha256 与 manifest 不一致，请重新构建", file=sys.stderr)
+            ok = False
+    if ok:
+        print(f"[verify] {MANIFEST_PATH.relative_to(REPO_ROOT)} 全部 {len(manifest['plugins'])} 个 zip 校验通过")
     return 0 if ok else 1
 
 

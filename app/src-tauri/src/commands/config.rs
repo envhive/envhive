@@ -221,6 +221,8 @@ pub struct BootstrapInfo {
     pub install_dir: String,
     pub tools_dir: String,
     pub logs_dir: String,
+    /// 全局配置文件真实路径（`~/.envhive/config.yaml`），供设置页直接展示
+    pub config_file: String,
     pub config_writable: bool,
 }
 
@@ -234,6 +236,7 @@ pub fn bootstrap(state: State<'_, AppState>) -> Result<BootstrapInfo> {
         install_dir: state.manager.paths.install_root.to_string_lossy().to_string(),
         tools_dir: state.manager.paths.tools.to_string_lossy().to_string(),
         logs_dir: state.manager.paths.logs.to_string_lossy().to_string(),
+        config_file: state.manager.paths.config_file.to_string_lossy().to_string(),
         config_writable: writable,
     })
 }
