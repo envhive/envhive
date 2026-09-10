@@ -2,6 +2,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type { DownloadProgress, QueueTask } from "../types";
+import { t } from "../i18n";
 
 // 统一命令调用：成功返回数据；预览模式（非 Tauri 环境）下抛错由调用方捕获
 export async function run<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
@@ -47,7 +48,7 @@ export function setupEvents(opts: EventsOpts): () => Promise<() => void> {
         opts.onProgress(e.payload);
         if (e.payload.stage === "done") opts.onDone(e.payload);
         if (e.payload.stage === "failed")
-          opts.onError(`${e.payload.tool} ${e.payload.version} 下载失败`);
+          opts.onError(t("toast.downloadFailed", { tool: e.payload.tool, version: e.payload.version }));
       })
     );
     await safe(listen<QueueTask[]>("queue-updated", (e) => opts.onQueue(e.payload)));

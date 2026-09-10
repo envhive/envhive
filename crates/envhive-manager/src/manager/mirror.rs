@@ -12,13 +12,20 @@ impl EnvHiveManager {
         self.config.lock().unwrap().download_mirror.clone()
     }
 
-    /// 生效的下载加速镜像配置：用户自定义规则（config.yaml，优先）+
-    /// 该 工具 插件声明的镜像候选（TOOL.mirrors，缺省为不镜像时无规则）。
-    /// 规则语义：from 前缀 → to 新前缀，作用于版本列表 / 下载包 / checksum 全链路。
+    /// 生效的下载加速镜像配置（供版本列表 / 下载包 / checksum 全链路使用）。
+    ///
+    /// 语义（与 toolkit::mirror::apply 对齐）：
+    /// - 规则仅取 `config.yaml downloadMirror.rules`（用户自定义 + 「加速镜像」下拉选中后
+    ///   由 `set_tool_mirror` 写入），**不再无条件并入插件声明的全部候选** —— 否则未选中的
+    ///   工具（官方源）会被首候选自动镜像，与 UI“官方源 = 不镜像”矛盾。
+    /// - 已声明 `TOOL.mirrors` 的工具：把 `enable` 视为关闭（禁用内置兜底规则），镜像与否
+    ///   完全由规则表决定：选了镜像 → 有规则即替换；官方源 → 无规则即走官方。
+    /// - 未声明 mirrors 的旧工具：仍遵循总开关 + 内置兜底规则（BUILTIN_RULES）。
     pub fn effective_mirror(&self, desc: &dyn envhive_toolkit::tool::ToolDescriptor) -> envhive_core::config::DownloadMirrorConfig {
         let mut cfg = self.config.lock().unwrap().download_mirror.clone();
-        for m in desc.mirrors() {
-            cfg.rules.entry(m.from.clone()).or_insert_with(|| m.to.clone());
+        if !desc.mirrors().is_empty() {
+            // 已声明镜像候选的工具由显式规则接管，绕开内置兜底，避免“官方源”被劫持
+            cfg.enable = false;
         }
         cfg
     }

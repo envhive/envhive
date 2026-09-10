@@ -2,6 +2,7 @@
 // ToolCard —— 纯管理视图：左栏 =工具身份 + 当前版本摘要；右区 = 已安装版本紧凑表格（切换/卸载/取消使用）
 // 安装新版本 → 通过「安装」按钮打开 InstallToolModal 弹窗（低频操作不占卡片空间）
 import { computed, ref } from "vue";
+import { useI18n } from "vue-i18n";
 import { NButton, NTag } from "naive-ui";
 import { useApp, store } from "../store";
 import type { ToolInfo } from "../types";
@@ -12,6 +13,7 @@ const props = defineProps<{ tool: ToolInfo; index: number }>();
 const emit = defineEmits<{ (e: "install-more", tool: ToolInfo): void }>();
 
 const app = useApp();
+const { t } = useI18n();
 const busyTool = computed(() => app.busy === props.tool.name);
 
 // 已安装：当前版本置顶，其余 semver 降序
@@ -49,37 +51,37 @@ const visibleVersions = computed(() =>
           {{ tool.homepage.replace("https://", "") }}
         </a>
         <span v-if="tool.binPath" class="mono path-ok" :title="tool.binPath">PATH ✓</span>
-        <span v-else-if="tool.installed.length" class="mono path-bad" title="该工具未加入 PATH">PATH ✗</span>
+        <span v-else-if="tool.installed.length" class="mono path-bad" :title="t('toolCard.pathMissing')">PATH ✗</span>
       </div>
 
       <p v-if="tool.current" class="current-line">
-        <span class="current-lbl">当前</span>
+        <span class="current-lbl">{{ t("toolCard.current") }}</span>
         <n-tag size="small" type="primary" :bordered="false" round class="current-tag">{{ tool.current }}</n-tag>
       </p>
-      <p v-else class="hint">未设置全局版本</p>
+      <p v-else class="hint">{{ t("toolCard.noGlobalVersion") }}</p>
     </div>
 
     <!-- ==================== 右区：已安装版本紧凑表格 + 折叠 ==================== -->
     <div class="mgmt-panel">
       <div class="mgmt-head">
         <span class="mgmt-title">
-          已安装版本 <span class="count-pill">{{ tool.installed.length }}</span>
+          {{ t("toolCard.installedVersions") }} <span class="count-pill">{{ tool.installed.length }}</span>
         </span>
         <n-button size="small" secondary type="primary" :disabled="busyTool" @click="emit('install-more', tool)">
-          安装
+          {{ t("common.install") }}
         </n-button>
       </div>
 
       <div v-if="tool.installed.length === 0" class="empty-vers">
-        <p class="hint">尚未安装任何版本，点击「安装」开始</p>
+        <p class="hint">{{ t("toolCard.emptyVersions") }}</p>
       </div>
       <div v-else class="ver-list">
         <!-- 表头 -->
         <div class="ver-row ver-head">
           <span />
           <div class="ver-cell">
-            <span class="col-ver">版本</span>
-            <span class="col-ops-head">操作</span>
+            <span class="col-ver">{{ t("toolCard.colVersion") }}</span>
+            <span class="col-ops-head">{{ t("toolCard.colOps") }}</span>
           </div>
         </div>
 
@@ -96,7 +98,7 @@ const visibleVersions = computed(() =>
                 {{ v }}<span v-if="v.includes('.fx-')" class="ver-fx"> FX</span>
               </span>
               <n-tag v-if="tool.current === v" size="tiny" type="primary" :bordered="false" round class="ver-tag">
-                当前
+                {{ t("toolCard.current") }}
               </n-tag>
             </span>
             <div class="ver-ops">
@@ -106,20 +108,20 @@ const visibleVersions = computed(() =>
                   secondary
                   :loading="busyTool"
                   :disabled="busyTool"
-                  title="切换为该版本（新终端生效）"
+                  :title="t('toolCard.switchTitle')"
                   @click="store.switchVersion(tool, v)"
                 >
-                  切换
+                  {{ t("toolCard.switch") }}
                 </n-button>
                 <n-button
                   size="tiny"
                   tertiary
                   type="error"
                   :disabled="busyTool"
-                  title="卸载该版本（删除目录与环境变量）"
+                  :title="t('toolCard.uninstallTitle')"
                   @click="store.uninstallVersion(tool, v)"
                 >
-                  卸载
+                  {{ t("toolCard.uninstall") }}
                 </n-button>
               </template>
               <n-button
@@ -128,10 +130,10 @@ const visibleVersions = computed(() =>
                 tertiary
                 type="warning"
                 :disabled="busyTool"
-                title="解除全局激活并从 PATH / *_HOME 移除（不卸载）"
+                :title="t('toolCard.unuseTitle')"
                 @click="store.unuseGlobal(tool)"
               >
-                取消使用
+                {{ t("toolCard.unuse") }}
               </n-button>
             </div>
           </div>
@@ -144,7 +146,7 @@ const visibleVersions = computed(() =>
           class="ver-expand"
           @click="expanded = true"
         >
-          展开其余 {{ hiddenCount }} 个版本
+          {{ t("toolCard.expandMore", { count: hiddenCount }) }}
         </button>
         <button
           v-else-if="hiddenCount > 0 && expanded"
@@ -152,7 +154,7 @@ const visibleVersions = computed(() =>
           class="ver-expand"
           @click="expanded = false"
         >
-          收起
+          {{ t("common.collapse") }}
         </button>
       </div>
     </div>

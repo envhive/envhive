@@ -1,9 +1,11 @@
 <script setup lang="ts">
 // EnvTable —— 环境变量表格（等宽字体值、可复制）
+import { useI18n } from "vue-i18n";
 import { NButton } from "naive-ui";
 import type { EnvVarRow } from "../types";
 
 const props = defineProps<{ rows: EnvVarRow[] }>();
+const { t } = useI18n();
 
 function copyRow(row: EnvVarRow) {
   void navigator.clipboard?.writeText(`${row.key}=${row.value}`).catch(() => {});
@@ -15,9 +17,9 @@ function copyRow(row: EnvVarRow) {
     <n-table :bordered="false" size="small" single-line>
       <thead>
         <tr>
-          <th style="width: 22%">变量名</th>
-          <th style="width: 44%">值</th>
-          <th style="width: 20%">来源</th>
+          <th style="width: 22%">{{ t("envTable.key") }}</th>
+          <th style="width: 44%">{{ t("envTable.value") }}</th>
+          <th style="width: 20%">{{ t("envTable.source") }}</th>
           <th style="width: 60px" />
         </tr>
       </thead>
@@ -27,7 +29,7 @@ function copyRow(row: EnvVarRow) {
           <td><span class="env-val-text">{{ row.value }}</span></td>
           <td><span class="mono">{{ row.source }}</span></td>
           <td>
-            <n-button size="tiny" quaternary @click="copyRow(row)">复制</n-button>
+            <n-button size="tiny" quaternary @click="copyRow(row)">{{ t("common.copy") }}</n-button>
           </td>
         </tr>
       </tbody>

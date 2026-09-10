@@ -20,7 +20,9 @@
         "center": true
       }
     ],
-    "security": { "csp": null }
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self'"
+    }
   },
   "bundle": {
     "active": true,

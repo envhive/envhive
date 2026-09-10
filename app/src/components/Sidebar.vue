@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // Sidebar —— 左侧导航栏（Naive UI n-layout-sider + n-menu，支持折叠）
 import { ref, computed, h } from "vue";
+import { useI18n } from "vue-i18n";
 import { NLayoutSider, NMenu, NIcon } from "naive-ui";
 import type { MenuOption } from "naive-ui";
 import { useApp } from "../store";
@@ -9,14 +10,18 @@ import { NAV_ITEMS, type PageKey } from "../types";
 import hiveLogo from "../assets/icon.png";
 
 const app = useApp();
+const { t } = useI18n();
 const collapsed = ref(false);
 
 // 平铺菜单项（无分组，icon 用 ionicons5 SVG 组件，经 NIcon 包裹以随菜单着色/调尺寸）
-const menuOptions: MenuOption[] = NAV_ITEMS.map((item) => ({
-  key: item.key,
-  label: item.label,
-  icon: () => h(NIcon, null, { default: () => h(item.icon) }),
-}));
+// label 走 i18n key，计算属性使其随语言切换即时刷新
+const menuOptions = computed<MenuOption[]>(() =>
+  NAV_ITEMS.map((item) => ({
+    key: item.key,
+    label: t(item.i18nKey),
+    icon: () => h(NIcon, null, { default: () => h(item.icon) }),
+  }))
+);
 
 const activeKey = computed(() => app.page);
 

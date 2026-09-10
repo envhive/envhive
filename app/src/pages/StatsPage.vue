@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // 统计 —— 使用统计柱状条 + 存储占用（按工具树形分组）
 import { computed, h } from "vue";
+import { useI18n } from "vue-i18n";
 import {
   NButton,
   NDataTable,
@@ -15,6 +16,7 @@ import EmptyState from "../components/EmptyState.vue";
 import { fmtBytes, type ToolInfo } from "../types";
 
 const app = useApp();
+const { t } = useI18n();
 
 const maxCount = computed(() =>
   app.usageStats ? Math.max(1, ...app.usageStats.toolUsage.map((s) => s.totalCount)) : 1
@@ -88,7 +90,7 @@ async function removeVersion(row: UsageRow) {
 
 const columns = computed<DataTableColumns<UsageRow>>(() => [
   {
-    title: "工具",
+    title: t("stats.colTool"),
     key: "tool",
     render: (row) =>
       row.version
@@ -99,49 +101,56 @@ const columns = computed<DataTableColumns<UsageRow>>(() => [
           ]),
   },
   {
-    title: "版本",
+    title: t("stats.colVersion"),
     key: "version",
     render: (row) =>
       row.version
         ? h("span", { class: "mono" }, row.version)
-        : h("span", { class: "muted" }, `全部 ${row.children?.length ?? 0} 个版本`),
+        : h("span", { class: "muted" }, t("stats.allVersions", { count: row.children?.length ?? 0 })),
   },
   {
-    title: "使用次数",
+    title: t("stats.colCount"),
     key: "count",
     width: 90,
     render: (row) => (row.version ? (row.count || "—") : row.count),
   },
   {
-    title: "上次使用",
+    title: t("stats.colLastUsed"),
     key: "lastUsed",
     render: (row) =>
       row.version
         ? row.lastUsedDaysAgo === null
-          ? "从未使用"
-          : `${row.lastUsedDaysAgo} 天前`
+          ? t("stats.neverUsed")
+          : t("stats.daysAgo", { n: row.lastUsedDaysAgo })
         : "—",
   },
   {
-    title: "磁盘占用",
+    title: t("stats.colDisk"),
     key: "disk",
     render: (row) =>
       h("span", { class: row.version ? "mono" : "mono cell-disk" }, fmtBytes(row.diskBytes)),
   },
   {
-    title: "状态",
+    title: t("stats.colStatus"),
     key: "status",
     render: (row) =>
       row.version
         ? h(
             StatusChip,
             { tone: row.isCurrent ? "accent" : row.installed ? "ok" : "muted" },
-            { default: () => (row.isCurrent ? "当前 ★" : row.installed ? "已安装" : "未安装") }
+            {
+              default: () =>
+                row.isCurrent
+                  ? t("stats.currentStar")
+                  : row.installed
+                    ? t("common.installed")
+                    : t("stats.notInstalled"),
+            }
           )
         : null,
   },
   {
-    title: "操作",
+    title: t("stats.colOps"),
     key: "actions",
     width: 90,
     render: (row) =>
@@ -155,7 +164,7 @@ const columns = computed<DataTableColumns<UsageRow>>(() => [
               loading: app.busy === row.tool,
               onClick: () => removeVersion(row),
             },
-            { default: () => "删除" }
+            { default: () => t("common.delete") }
           )
         : null,
   },
@@ -166,12 +175,12 @@ const columns = computed<DataTableColumns<UsageRow>>(() => [
   <section class="section">
     <EmptyState
       v-if="!app.usageStats"
-      hint="预览模式下不可用；连接后端后自动统计。"
+      :hint="t('stats.previewHint')"
     />
 
     <template v-else>
       <!-- ============ 使用统计 ============ -->
-      <n-card size="small" title="使用统计（近 30 天切换次数）" class="section-card" :bordered="true">
+      <n-card size="small" :title="t('stats.usageTitle')" class="section-card" :bordered="true">
         <div class="stats-bars">
           <div v-for="(s, i) in app.usageStats.toolUsage" :key="s.tool" class="stats-bar-row">
             <span class="stats-bar-name">
@@ -187,16 +196,16 @@ const columns = computed<DataTableColumns<UsageRow>>(() => [
                 color="#534ab7"
               />
             </span>
-            <span class="stats-bar-count">{{ s.totalCount }} 次</span>
+            <span class="stats-bar-count">{{ t("stats.times", { count: s.totalCount }) }}</span>
           </div>
         </div>
         <p class="muted stats-summary">
-          安装总量 {{ app.usageStats.totalVersions }} · 磁盘占用 {{ fmtBytes(app.usageStats.totalDiskBytes) }}
+          {{ t("stats.summary", { versions: app.usageStats.totalVersions, disk: fmtBytes(app.usageStats.totalDiskBytes) }) }}
         </p>
       </n-card>
 
       <!-- ============ 存储占用（树形分组） ============ -->
-      <n-card size="small" title="存储占用" class="section-card" :bordered="true">
+      <n-card size="small" :title="t('stats.storageTitle')" class="section-card" :bordered="true">
         <n-data-table
           :columns="columns"
           :data="treeData"
@@ -205,7 +214,7 @@ const columns = computed<DataTableColumns<UsageRow>>(() => [
           size="small"
           single-line
         />
-        <p class="muted stats-summary">合计 {{ fmtBytes(app.usageStats.totalDiskBytes) }}</p>
+        <p class="muted stats-summary">{{ t("stats.totalDisk", { disk: fmtBytes(app.usageStats.totalDiskBytes) }) }}</p>
       </n-card>
     </template>
   </section>
@@ -249,16 +258,17 @@ const columns = computed<DataTableColumns<UsageRow>>(() => [
   font-size: 12px;
   margin-top: 8px;
 }
-.cell-name-wrap {
+.section-card :deep(.cell-name-wrap) {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  vertical-align: -0.2em;
 }
-.cell-name {
+.section-card :deep(.cell-name) {
   font-weight: 600;
   font-size: 13px;
 }
-.cell-disk {
+.section-card :deep(.cell-disk) {
   font-weight: 600;
 }
 </style>

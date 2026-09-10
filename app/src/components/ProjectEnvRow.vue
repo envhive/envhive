@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { useI18n } from "vue-i18n";
 import { NButton, NTag } from "naive-ui";
 import { useApp, store } from "../store";
 import ToolIcon from "./ToolIcon.vue";
@@ -11,6 +12,7 @@ const props = defineProps<{
 const emit = defineEmits<{ edit: [p: ProjectPreset] }>();
 
 const app = useApp();
+const { t } = useI18n();
 
 // TODO: 复制脚本功能暂缓（按需恢复）
 // function copyScript() {
@@ -36,14 +38,14 @@ function sdkIcon(sdkName: string): string | null | undefined {
       <span class="proj-name">{{ preset.name }}</span>
       <span class="mono muted proj-dir" :title="preset.dir">{{ preset.dir }}</span>
       <div style="flex: 1" />
-      <n-button size="tiny" quaternary @click="emit('edit', preset)">编辑</n-button>
+      <n-button size="tiny" quaternary @click="emit('edit', preset)">{{ t("common.edit") }}</n-button>
       <n-button size="tiny" quaternary type="error" @click="store.deleteProjectPreset(preset.name)">
-        删除
+        {{ t("common.delete") }}
       </n-button>
     </div>
 
     <div class="proj-vers">
-      <span v-if="preset.versions.length === 0" class="muted proj-empty">未配置版本组合</span>
+      <span v-if="preset.versions.length === 0" class="muted proj-empty">{{ t("project.emptyVersions") }}</span>
       <n-tag
         v-for="v in preset.versions"
         :key="`${v.tool}-${v.distribution ?? 'default'}-${v.version}`"
@@ -65,7 +67,7 @@ function sdkIcon(sdkName: string): string | null | undefined {
         :loading="sessionBusy()"
         @click="store.launchProjectSession(preset.name, 'cmd', [])"
       >
-        启动终端
+        {{ t("project.launchTerminal") }}
       </n-button>
       <!-- 启动 IDE 按钮已移除 -->
       <!-- 复制脚本按钮暂缓显示

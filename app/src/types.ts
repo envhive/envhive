@@ -8,6 +8,8 @@ import {
     DocumentTextOutline,
     InformationCircleOutline, ExtensionPuzzleOutline, GridOutline,
 } from "@vicons/ionicons5";
+// 组件外取词（relTime 等纯函数需要在语言切换后返回最新文案）
+import { t } from "./i18n";
 
 // ----------工具基础 ----------
 // 发行商维度（Lua 插件 TOOL.distributions）
@@ -312,23 +314,27 @@ export interface LogFileInfo {
 // UI v2：8 页（9 页平铺收敛 + 关于）
 export type PageKey = "home" | "tools" | "network" | "plugins" | "settings" | "stats" | "logs" | "about";
 
+/** 导航项的 i18n key（与 PageKey 一一对应，形如 `nav.home`） */
+export type NavI18nKey = `nav.${PageKey}`;
+
 export interface NavItem {
     key: PageKey;
-    label: string;
+    /** i18n key；文案在语言包 `nav.*` 下维护，组件侧用 `t(i18nKey)` 取词 */
+    i18nKey: NavI18nKey;
     /** 图标组件（@vicons/ionicons5 的 Vue SVG 组件） */
     icon: Component;
 }
 
 // 导航：全部平铺，不分组（图标统一使用 ionicons5 Outline 风格，随菜单着色）
 export const NAV_ITEMS: NavItem[] = [
-    {key: "home", label: "首页", icon: HomeOutline},
-    {key: "tools", label: "工具管理", icon: GridOutline},
-    {key: "plugins", label: "插件", icon: ExtensionPuzzleOutline},
-    {key: "network", label: "镜像源管理", icon: GlobeOutline},
-    {key: "settings", label: "设置", icon: SettingsOutline},
-    {key: "stats", label: "统计", icon: BarChartOutline},
-    {key: "logs", label: "日志", icon: DocumentTextOutline},
-    {key: "about", label: "关于", icon: InformationCircleOutline},
+    {key: "home", i18nKey: "nav.home", icon: HomeOutline},
+    {key: "tools", i18nKey: "nav.tools", icon: GridOutline},
+    {key: "plugins", i18nKey: "nav.plugins", icon: ExtensionPuzzleOutline},
+    {key: "network", i18nKey: "nav.network", icon: GlobeOutline},
+    {key: "settings", i18nKey: "nav.settings", icon: SettingsOutline},
+    {key: "stats", i18nKey: "nav.stats", icon: BarChartOutline},
+    {key: "logs", i18nKey: "nav.logs", icon: DocumentTextOutline},
+    {key: "about", i18nKey: "nav.about", icon: InformationCircleOutline},
 ];
 
 // ---------- 常量 ----------
@@ -348,22 +354,10 @@ export const REGISTRY_TOOL_HINT: Record<string, string> = {
 
 export const DOT_COLORS = ["#d4537e", "#639922", "#378add", "#ef9f27"];
 
-export const STAGE_TEXT: Record<string, string> = {
-    resolving: "解析版本",
-    downloading: "下载中",
-    verifying: "校验中",
-    extracting: "解压安装",
-    done: "完成",
-    failed: "失败",
-};
-
-export const TASK_STATUS_TEXT: Record<string, string> = {
-    queued: "排队中",
-    running: "执行中",
-    done: "完成",
-    failed: "失败",
-    cancelled: "已取消",
-};
+// 状态 / 阶段文案已收敛到语言包（`stage.*` / `task.*`），统一由 src/i18n 提供：
+//   · 组件内：useI18n().t(`stage.${stage}`) 或 i18n 导出的 stageLabel() / taskStatusLabel()
+//   · 组件外：import { t } from "../i18n"
+// 后端枚举值即 key 尾段，新增状态只需补语言包，不再维护本地映射表。
 
 // ----------工具函数 ----------
 export function versionsKey(tool: string, dist?: string): string {
@@ -442,10 +436,10 @@ export function fmtDuration(startSec: number, endSec?: number | null): string {
 export function relTime(ts: number | null | undefined): string {
     if (!ts) return "";
     const diff = Date.now() / 1000 - ts;
-    if (diff < 60) return "刚刚";
-    if (diff < 3600) return `${Math.floor(diff / 60)} 分钟前`;
-    if (diff < 86400) return `${Math.floor(diff / 3600)} 小时前`;
-    if (diff < 30 * 86400) return `${Math.floor(diff / 86400)} 天前`;
+    if (diff < 60) return t("time.justNow");
+    if (diff < 3600) return t("time.minutesAgo", { n: Math.floor(diff / 60) });
+    if (diff < 86400) return t("time.hoursAgo", { n: Math.floor(diff / 3600) });
+    if (diff < 30 * 86400) return t("time.daysAgo", { n: Math.floor(diff / 86400) });
     const d = new Date(ts * 1000);
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
 }

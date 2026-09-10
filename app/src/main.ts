@@ -1,9 +1,11 @@
 // main.ts —— Vue 3 入口
 import { createApp, nextTick } from "vue";
 import App from "./App.vue";
+import { i18n } from "./i18n";
 import "./styles.css";
 
 const app = createApp(App);
+app.use(i18n);
 app.mount("#root");
 
 // 淡出并移除 splash 启动屏：

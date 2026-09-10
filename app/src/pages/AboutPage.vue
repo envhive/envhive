@@ -1,14 +1,17 @@
 <script setup lang="ts">
 // 关于 —— 品牌愿景 / 技术架构 / 应用更新 / 开源仓库
+import { useI18n } from "vue-i18n";
 import {NTag, NIcon} from "naive-ui";
 import {LogoGithub, GitBranchOutline, ShieldCheckmarkOutline} from "@vicons/ionicons5";
 import {openUrl} from "@tauri-apps/plugin-opener";
 import hiveLogo from "../assets/icon.png";
 
+const { t } = useI18n();
+
 // 版本 / 打包时间（由 vite.config.ts define 注入，与 package.json / tauri.conf.json 保持一致）
 const appVersion = __APP_VERSION__;
+// 品牌字标不随语言翻译（见 docs/frontend-i18n-spec.md「不纳入 i18n」）
 const appName = "蜂巢 EnvHive";
-const appTagline = "多语言运行时 · 环境配置中枢";
 
 // 打包时间：ISO → "YYYY-MM-DD HH:mm:ss"
 function formatBuildTime(iso: string): string {
@@ -29,7 +32,7 @@ const REPOS = [
 const LICENSE = {
   name: "License",
   url: "https://license.coscl.org.cn/MulanPSL2",
-  display: "Mulan PSL v2 · 木兰宽松许可证第2版",
+  display: t("about.licenseDisplay"),
 };
 
 async function openRepo(url: string) {
@@ -41,11 +44,11 @@ async function openRepo(url: string) {
   }
 }
 
-// 技术架构：三列等宽卡片
+// 技术架构：三列等宽卡片（layer / detail 走 i18n；choice 为技术名，不翻译）
 const TECH_ARCH = [
-  {layer: "桌面框架", choice: "Tauri 2", detail: "Rust 后端，安装包约 10MB"},
-  {layer: "前端", choice: "Vue 3 + TypeScript", detail: "Vite + Naive UI"},
-  {layer: "后端", choice: "Rust (cargo)", detail: "工具全部由 Lua 插件驱动"},
+  { layer: "about.arch.desktop.layer", choice: "Tauri 2", detail: "about.arch.desktop.detail" },
+  { layer: "about.arch.frontend.layer", choice: "Vue 3 + TypeScript", detail: "about.arch.frontend.detail" },
+  { layer: "about.arch.backend.layer", choice: "Rust (cargo)", detail: "about.arch.backend.detail" },
 ];
 
 // 检查更新：按钮与 checkUpdate 实现暂未启用（模板中已注释；如需恢复，参考 updater.ts 与 git 历史）
@@ -63,7 +66,7 @@ const TECH_ARCH = [
           <h1 class="hero-title">
             {{ appName }}
           </h1>
-          <p class="hero-tagline">{{ appTagline }} <n-tag size="small" round :bordered="false">v{{ appVersion }}</n-tag></p>
+          <p class="hero-tagline">{{ t("about.tagline") }} <n-tag size="small" round :bordered="false">v{{ appVersion }}</n-tag></p>
         </div>
       </div>
 
@@ -88,18 +91,18 @@ const TECH_ARCH = [
     </div>
 
     <!-- ============ 技术架构 ============ -->
-    <n-card size="small" title="技术架构" class="section-card" :bordered="true">
+    <n-card size="small" :title="t('about.techTitle')" class="section-card" :bordered="true">
       <div class="arch-grid">
         <div v-for="item in TECH_ARCH" :key="item.layer" class="arch-card">
-          <span class="arch-layer">{{ item.layer }}</span>
+          <span class="arch-layer">{{ t(item.layer) }}</span>
           <span class="arch-choice">{{ item.choice }}</span>
-          <span class="arch-detail">{{ item.detail }}</span>
+          <span class="arch-detail">{{ t(item.detail) }}</span>
         </div>
       </div>
     </n-card>
 
     <!-- ============ 开源仓库 ============ -->
-    <n-card size="small" title="开源仓库" class="section-card repo-card" :bordered="true">
+    <n-card size="small" :title="t('about.repoTitle')" class="section-card repo-card" :bordered="true">
       <div class="repo-list">
         <button
             v-for="repo in REPOS"
@@ -123,12 +126,12 @@ const TECH_ARCH = [
           <span class="repo-url">{{ LICENSE.display }}</span>
         </button>
       </div>
-      <p class="muted repo-hint">点击打开仓库 / 协议原文，欢迎 Star / Issue / PR，一起共建蜂巢生态。</p>
+      <p class="muted repo-hint">{{ t("about.repoHint") }}</p>
     </n-card>
 
     <!-- ============ 页脚 ============ -->
     <p class="muted footer-note">
-      {{ appName }} · v{{ appVersion }} · 打包于 {{ buildTimeText }}
+      {{ t("about.footer", { app: appName, version: appVersion, time: buildTimeText }) }}
     </p>
   </section>
 </template>

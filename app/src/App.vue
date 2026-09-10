@@ -2,6 +2,7 @@
 // App.vue —— 应用壳：Naive UI n-layout 整体布局
 //   左侧 n-layout-sider（菜单） + 右侧 n-layout（header + content）
 import { onMounted, onUnmounted, computed } from "vue";
+import { useI18n } from "vue-i18n";
 import {
   NConfigProvider,
   NMessageProvider,
@@ -9,10 +10,9 @@ import {
   NLayout,
   NLayoutHeader,
   NLayoutContent,
-  zhCN,
-  dateZhCN,
 } from "naive-ui";
 import type { GlobalThemeOverrides } from "naive-ui";
+import { naiveLocale, naiveDateLocale } from "./i18n";
 import { useApp, store, initEvents } from "./store";
 import Sidebar from "./components/Sidebar.vue";
 import TopBar from "./components/TopBar.vue";
@@ -27,6 +27,7 @@ import LogsPage from "./pages/LogsPage.vue";
 import AboutPage from "./pages/AboutPage.vue";
 
 const app = useApp();
+const { t } = useI18n();
 
 const themeOverrides: GlobalThemeOverrides = {
   common: {
@@ -56,7 +57,7 @@ onUnmounted(() => cleanupEvents?.());
 </script>
 
 <template>
-  <n-config-provider :theme-overrides="themeOverrides" :locale="zhCN" :date-locale="dateZhCN">
+  <n-config-provider :theme-overrides="themeOverrides" :locale="naiveLocale" :date-locale="naiveDateLocale">
     <n-message-provider>
       <n-dialog-provider>
         <n-layout position="absolute" class="app-shell">
@@ -73,8 +74,8 @@ onUnmounted(() => cleanupEvents?.());
                     <div class="spinner" aria-hidden="true">
                       <span></span><span></span><span></span><span></span>
                     </div>
-                    <div class="loading-title">蜂巢 EnvHive 正在启动</div>
-                    <div class="loading-sub">正在加载环境信息、镜像配置与队列状态…</div>
+                    <div class="loading-title">{{ t("app.loading.title") }}</div>
+                    <div class="loading-sub">{{ t("app.loading.sub") }}</div>
                   </div>
                 </div>
 

@@ -28,6 +28,7 @@ import type {
 } from "./types";
 import { REGISTRY_TOOLS, lastNonFx, versionsKey } from "./types";
 import { notify, run, setupEvents } from "./hooks/useBackend";
+import { t } from "./i18n";
 
 // ---------- 全局 UI 能力（Naive UI discrete API） ----------
 const { message, dialog } = createDiscreteApi(["message", "dialog"]);
@@ -45,7 +46,7 @@ export function showErr(m: string) {
  * 兼容字符串 / Error / 结构化对象 / JSON 字符串等各类形态。
  */
 export function errMsg(e: unknown): string {
-  if (e == null) return "未知错误";
+  if (e == null) return t("common.unknownError");
   if (typeof e === "string") {
     // Tauri 可能把 {code,message} 序列化成 JSON 字符串
     const t = e.trim();
@@ -84,8 +85,8 @@ export function confirmAsk(title: string, content: string): Promise<boolean> {
     dialog.warning({
       title,
       content,
-      positiveText: "确定",
-      negativeText: "取消",
+      positiveText: t("common.confirm"),
+      negativeText: t("common.cancel"),
       onPositiveClick: () => resolve(true),
       onNegativeClick: () => resolve(false),
       onClose: () => resolve(false),
@@ -318,7 +319,7 @@ async function loadTools() {
   } catch (e) {
     // 未连接后端 → 预览模式：注入样例数据便于浏览器预览 UI
     state.tools = PREVIEW_TOOLS;
-    showMsg(`预览模式：${errMsg(e)}`);
+    showMsg(t("toast.previewMode", { msg: errMsg(e) }));
   }
 }
 
@@ -435,7 +436,7 @@ async function refreshLogs() {
     state.logsContent = content;
     if (name) state.logFile = name;
   } catch (e) {
-    showErr(`读取日志失败：${errMsg(e)}`);
+    showErr(t("toast.logReadFailed", { msg: errMsg(e) }));
   }
 }
 
@@ -488,7 +489,7 @@ export function initEvents(): () => void {
         // 附加提示（如镜像失败回退官方源）：写入队列消息 + 界面通知
         if (p.note) {
           q.message = p.note;
-          showMsg(`${p.tool} ${p.version}：${p.note}`);
+          showMsg(t("toast.progressNote", { tool: p.tool, version: p.version, note: p.note }));
         }
       }
       if (p.stage === "done") {
@@ -498,7 +499,10 @@ export function initEvents(): () => void {
           const cur = state.progress;
           if (cur && `${cur.tool}|${cur.version}` === key) state.progress = null;
         }, 1500);
-        void notify("蜂巢 EnvHive · 安装完成", `${p.tool} ${p.version} 安装完成`);
+        void notify(
+          t("toast.installCompleteTitle"),
+          t("toast.installCompleteBody", { tool: p.tool, version: p.version })
+        );
       }
       if (p.stage === "failed") {
         state.busy = null;
@@ -512,7 +516,7 @@ export function initEvents(): () => void {
     onError: (message) => {
       state.busy = null;
       state.progress = null;
-      showErr(`安装失败：${message}`);
+      showErr(t("toast.installFailed", { msg: message }));
       void loadAll();
     },
   })().then((fn) => (cleanup = fn));
@@ -536,9 +540,10 @@ async function loadVersions(tool: ToolInfo, force = false) {
     const cur = state.selections[tool.name];
     const version = cur?.version || lastNonFx(versions);
     state.selections[tool.name] = { dist, version };
-    showMsg(`${tool.display}${dist ? ` · ${dist}` : ""} 版本列表已刷新（${versions.length} 个版本）`);
+    const label = dist ? `${tool.display} · ${dist}` : tool.display;
+    showMsg(t("toast.versionsRefreshed", { tool: label, count: versions.length }));
   } catch (e) {
-    showErr(`获取 ${tool.display} 版本失败：${errMsg(e)}`);
+    showErr(t("toast.versionsLoadFailed", { tool: tool.display, msg: errMsg(e) }));
   } finally {
     state.refreshing[key] = false;
   }
@@ -547,7 +552,7 @@ async function loadVersions(tool: ToolInfo, force = false) {
 async function install(tool: ToolInfo) {
   const sel = state.selections[tool.name];
   const version = sel?.version;
-  if (!version) return showMsg(`请先为 ${tool.display} 选择版本`);
+  if (!version) return showMsg(t("toast.selectVersionFirst", { tool: tool.display }));
   state.busy = tool.name;
   try {
     const r = await run<QueueEnqueueResult>("enqueue_install", {
@@ -556,13 +561,13 @@ async function install(tool: ToolInfo) {
       distribution: sel.dist ?? null,
     });
     if (r.reused) {
-      showMsg(`${tool.display} ${version} 已在队列中（任务 #${r.id}），无需重复入队`);
+      showMsg(t("toast.alreadyQueued", { tool: tool.display, version, id: r.id }));
     } else {
-      showMsg(`${tool.display} ${version} 已加入队列（任务 #${r.id}）`);
+      showMsg(t("toast.enqueued", { tool: tool.display, version, id: r.id }));
     }
     await loadQueue();
   } catch (e) {
-    showErr(`加入队列失败：${errMsg(e)}`);
+    showErr(t("toast.enqueueFailed", { msg: errMsg(e) }));
   } finally {
     state.busy = null;
   }
@@ -572,10 +577,10 @@ async function switchVersion(tool: ToolInfo, version: string) {
   state.busy = tool.name;
   try {
     const r = await run<SwitchResult>("switch_version", { name: tool.name, version });
-    showMsg(`${tool.display} → ${r.version}：${r.message}（新终端生效，已打开窗口需重启）`);
+    showMsg(t("toast.switched", { tool: tool.display, version: r.version, message: r.message }));
     await Promise.all([loadTools(), loadQueue(), loadHome()]);
   } catch (e) {
-    showErr(`切换失败：${errMsg(e)}`);
+    showErr(t("toast.switchFailed", { msg: errMsg(e) }));
   } finally {
     state.busy = null;
   }
@@ -584,22 +589,26 @@ async function switchVersion(tool: ToolInfo, version: string) {
 /** 取消某工具的全局设置：解除激活并从 PATH / *_HOME 等环境变量移除（不卸载版本） */
 async function unuseGlobal(tool: ToolInfo) {
   if (!tool.current) {
-    showMsg(`${tool.display} 当前未设置为全局版本`);
+    showMsg(t("toast.notGlobalVersion", { tool: tool.display }));
     return;
   }
   const envName = tool.name.toUpperCase() + "_HOME";
   const ok = await confirmAsk(
-    `取消 ${tool.display} 的全局设置`,
-    `将解除 ${tool.display} ${tool.current} 的全局激活，并从 PATH / ${envName} 等环境变量中移除（不会卸载该版本）。新终端生效，已打开窗口需重启。`
+    t("dialog.unuseGlobal.title", { tool: tool.display }),
+    t("dialog.unuseGlobal.content", {
+      tool: tool.display,
+      version: tool.current,
+      envName,
+    })
   );
   if (!ok) return;
   state.busy = tool.name;
   try {
     await run<void>("unuse_global", { name: tool.name });
-    showMsg(`${tool.display} 已取消全局设置，恢复系统默认`);
+    showMsg(t("toast.globalCleared", { tool: tool.display }));
     await Promise.all([loadTools(), loadQueue(), loadHome()]);
   } catch (e) {
-    showErr(`取消失败：${errMsg(e)}`);
+    showErr(t("toast.unuseFailed", { msg: errMsg(e) }));
   } finally {
     state.busy = null;
   }
@@ -607,17 +616,17 @@ async function unuseGlobal(tool: ToolInfo) {
 
 async function uninstallVersion(tool: ToolInfo, version: string) {
   const ok = await confirmAsk(
-    `卸载 ${tool.display} ${version}`,
-    "已安装版本目录将被删除，可通过重新安装恢复。"
+    t("dialog.uninstall.title", { tool: tool.display, version }),
+    t("dialog.uninstall.content")
   );
   if (!ok) return;
   state.busy = tool.name;
   try {
     await run<void>("uninstall_tool", { name: tool.name, version });
-    showMsg(`${tool.display} ${version} 已卸载`);
+    showMsg(t("toast.uninstalled", { tool: tool.display, version }));
     await Promise.all([loadTools(), loadHome(), loadP2()]);
   } catch (e) {
-    showErr(`卸载失败：${errMsg(e)}`);
+    showErr(t("toast.uninstallFailed", { msg: errMsg(e) }));
   } finally {
     state.busy = null;
   }
@@ -625,19 +634,19 @@ async function uninstallVersion(tool: ToolInfo, version: string) {
 
 async function uninstall(tool: ToolInfo) {
   const version = state.selections[tool.name]?.version || tool.current;
-  if (!version) return showMsg(`没有可卸载的版本`);
+  if (!version) return showMsg(t("toast.noUninstallableVersion"));
   const ok = await confirmAsk(
-    `卸载 ${tool.display} ${version}`,
-    "下拉框当前选中版本。已安装版本目录将被删除，可通过重新安装恢复。"
+    t("dialog.uninstall.title", { tool: tool.display, version }),
+    t("dialog.uninstall.contentSelected")
   );
   if (!ok) return;
   state.busy = tool.name;
   try {
     await run<void>("uninstall_tool", { name: tool.name, version });
-    showMsg(`${tool.display} ${version} 已卸载`);
+    showMsg(t("toast.uninstalled", { tool: tool.display, version }));
     await Promise.all([loadTools(), loadHome(), loadP2()]);
   } catch (e) {
-    showErr(`卸载失败：${errMsg(e)}`);
+    showErr(t("toast.uninstallFailed", { msg: errMsg(e) }));
   } finally {
     state.busy = null;
   }
@@ -647,10 +656,10 @@ async function uninstall(tool: ToolInfo) {
 async function applyPreset(tool: string, name: string) {
   try {
     await run<void>("apply_registry", { tool, preset: name });
-    showMsg(`${tool} 镜像已切换为 ${name}`);
+    showMsg(t("toast.mirrorApplied", { tool, name }));
     state.registry[tool] = await run<RegistryState>("get_registry_state", { tool });
   } catch (e) {
-    showErr(`镜像切换失败：${errMsg(e)}`);
+    showErr(t("toast.mirrorApplyFailed", { msg: errMsg(e) }));
   }
 }
 
@@ -666,58 +675,64 @@ async function reloadToolPresets(tool: string) {
 async function addCustomPreset(tool: string, name: string, url: string) {
   try {
     await run<void>("add_custom_registry_preset", { tool, name, url });
-    showMsg(`${tool} 已添加自定义源「${name}」`);
+    showMsg(t("toast.customPresetAdded", { tool, name }));
     await reloadToolPresets(tool);
   } catch (e) {
-    showErr(`添加自定义源失败：${errMsg(e)}`);
+    showErr(t("toast.customPresetAddFailed", { msg: errMsg(e) }));
   }
 }
 
 async function removeCustomPreset(tool: string, name: string) {
   const ok = await confirmAsk(
-    `删除自定义源「${name}」`,
-    `删除 ${tool} 自定义源「${name}」？（不影响已写入的配置文件）`
+    t("dialog.removeCustomPreset.title", { name }),
+    t("dialog.removeCustomPreset.content", { tool, name })
   );
   if (!ok) return;
   try {
     await run<void>("remove_custom_registry_preset", { tool, name });
-    showMsg(`${tool} 自定义源「${name}」已删除`);
+    showMsg(t("toast.customPresetRemoved", { tool, name }));
     await reloadToolPresets(tool);
   } catch (e) {
-    showErr(`删除自定义源失败：${errMsg(e)}`);
+    showErr(t("toast.customPresetRemoveFailed", { msg: errMsg(e) }));
   }
 }
 
 async function saveProxy(silent = false) {
   try {
     await run<void>("set_proxy", { url: state.proxyUrl || null, enable: state.proxyEnable });
-    if (!silent) showMsg(state.proxyEnable ? `代理已启用：${state.proxyUrl}` : "代理已关闭");
+    if (!silent) {
+      showMsg(
+        state.proxyEnable
+          ? t("toast.proxyEnabled", { url: state.proxyUrl })
+          : t("toast.proxyDisabled")
+      );
+    }
     state.proxy = await run<ProxyConfig>("get_proxy");
   } catch (e) {
-    showErr(`代理设置失败：${errMsg(e)}`);
+    showErr(t("toast.proxySaveFailed", { msg: errMsg(e) }));
   }
 }
 
 async function cancelTask(id: number) {
   try {
     await run<void>("cancel_task", { id });
-    showMsg(`任务 #${id} 已取消`);
+    showMsg(t("toast.taskCancelled", { id }));
     await loadQueue();
   } catch (e) {
-    showErr(`取消失败：${errMsg(e)}`);
+    showErr(t("toast.cancelFailed", { msg: errMsg(e) }));
   }
 }
 
 /** 全部取消：排队中直接取消，执行中请求取消（worker 收尾定终态） */
 async function cancelAll() {
-  const ok = await confirmAsk("全部取消", "将取消队列中所有任务，正在执行的任务会在下载/校验节点尽快终止。");
+  const ok = await confirmAsk(t("dialog.cancelAll.title"), t("dialog.cancelAll.content"));
   if (!ok) return;
   try {
     const n = await run<number>("queue_cancel_all");
-    showMsg(n > 0 ? `已请求取消 ${n} 个任务` : "当前没有可取消的任务");
+    showMsg(n > 0 ? t("toast.cancelRequested", { count: n }) : t("toast.nothingToCancel"));
     await loadQueue();
   } catch (e) {
-    showErr(`全部取消失败：${errMsg(e)}`);
+    showErr(t("toast.cancelAllFailed", { msg: errMsg(e) }));
   }
 }
 
@@ -725,10 +740,10 @@ async function cancelAll() {
 async function clearFinished() {
   try {
     const n = await run<number>("queue_clear_finished");
-    showMsg(n > 0 ? `已清空 ${n} 个已完成任务` : "没有可清理的已完成任务");
+    showMsg(n > 0 ? t("toast.clearedFinished", { count: n }) : t("toast.nothingToClear"));
     await loadQueue();
   } catch (e) {
-    showErr(`清空失败：${errMsg(e)}`);
+    showErr(t("toast.clearFailed", { msg: errMsg(e) }));
   }
 }
 
@@ -736,16 +751,16 @@ async function clearFinished() {
 async function ackConflict(c: ConflictInfo) {
   if (c.kind !== "registry") return;
   const ok = await confirmAsk(
-    "确认当前配置为基线？",
-    `${c.message}\n\n确认后冲突提示将消除（后续再次被外部修改会重新提示）。`
+    t("dialog.ackConflict.title"),
+    t("dialog.ackConflict.content", { message: c.message })
   );
   if (!ok) return;
   try {
     await run<void>("ack_registry_conflict", { tool: c.tool });
-    showMsg(`${c.tool} 指纹已重新记录`);
+    showMsg(t("toast.fingerprintRecorded", { tool: c.tool }));
     loadExtras();
   } catch (e) {
-    showErr(`操作失败：${errMsg(e)}`);
+    showErr(t("toast.actionFailed", { msg: errMsg(e) }));
   }
 }
 
@@ -753,29 +768,44 @@ async function fixToolConflict(c: ConflictInfo) {
   if (c.kind !== "tool" || !c.version) return;
   try {
     await run<SwitchResult>("switch_version", { name: c.tool, version: c.version });
-    showMsg(`${c.tool} 已重新切换至 ${c.version}`);
+    showMsg(t("toast.reswitched", { tool: c.tool, version: c.version }));
     await Promise.all([loadExtras(), loadTools(), loadHome()]);
   } catch (e) {
-    showErr(`修复失败：${errMsg(e)}`);
+    showErr(t("toast.fixFailed", { msg: errMsg(e) }));
   }
 }
 
 async function installRemotePlugin(p: RemotePluginInfo) {
   // 同名插件已装且版本不同 → 视为「更新」（本地未声明版本的插件视为自定义，不提示更新）
   const local = state.plugins.find((x) => x.name === p.name);
-  const isUpdate = !!local?.version && local.version !== p.version;
+  const prevVersion = local?.version ?? "";
+  const isUpdate = !!prevVersion && prevVersion !== p.version;
   const ok = await confirmAsk(
-    isUpdate ? `更新插件 ${p.name}：v${local!.version} → v${p.version}` : `安装远程插件 ${p.name}@${p.version}`,
-    p.description || "（无描述）"
+    isUpdate
+      ? t("dialog.installRemotePlugin.titleUpdate", {
+          name: p.name,
+          from: prevVersion,
+          to: p.version,
+        })
+      : t("dialog.installRemotePlugin.titleInstall", { name: p.name, version: p.version }),
+    p.description || t("common.noDescription")
   );
   if (!ok) return;
   try {
     // 整个插件对象传入：type / format / sha256 随包校验（后端 zip 安装链路）
     await run<void>("install_remote_plugin", { plugin: p });
-    showMsg(`插件 ${p.name} 已${isUpdate ? "更新" : "安装"}至 v${p.version}`);
+    showMsg(
+      isUpdate
+        ? t("toast.pluginUpdated", { name: p.name, version: p.version })
+        : t("toast.pluginInstalled", { name: p.name, version: p.version })
+    );
     await Promise.all([loadTools(), loadExtras(), loadP2(), loadRemotePlugins()]);
   } catch (e) {
-    showErr(`${isUpdate ? "更新" : "安装"}插件失败：${errMsg(e)}`);
+    showErr(
+      isUpdate
+        ? t("toast.pluginUpdateFailed", { msg: errMsg(e) })
+        : t("toast.pluginInstallFailed", { msg: errMsg(e) })
+    );
   }
 }
 
@@ -786,9 +816,9 @@ async function toggleAutostart() {
     const next = !state.autostart;
     await run<void>("set_autostart", { enable: next });
     state.autostart = next;
-    showMsg(next ? "已开启开机自启动（开机自动启动，窗口隐藏驻留托盘）" : "已关闭开机自启动");
+    showMsg(next ? t("toast.autostartOn") : t("toast.autostartOff"));
   } catch (e) {
-    showErr(`设置自启动失败：${errMsg(e)}`);
+    showErr(t("toast.autostartFailed", { msg: errMsg(e) }));
   } finally {
     state.busy = null;
   }
@@ -800,9 +830,9 @@ async function toggleTrayResident() {
     const next = !state.trayResident;
     await run<void>("set_tray_resident", { enable: next });
     state.trayResident = next;
-    showMsg(next ? "已开启托盘常驻：关闭窗口后将隐藏到系统托盘，后台继续运行" : "已关闭托盘常驻");
+    showMsg(next ? t("toast.trayResidentOn") : t("toast.trayResidentOff"));
   } catch (e) {
-    showErr(`设置托盘常驻失败：${errMsg(e)}`);
+    showErr(t("toast.trayResidentFailed", { msg: errMsg(e) }));
   } finally {
     state.busy = null;
   }
@@ -828,34 +858,38 @@ async function setToolMirror(tool: ToolInfo, mirror: string | null) {
       mirror,
     });
     state.mirrorCfg = cfg;
-    showMsg(mirror ? `${tool.display} 下载加速镜像已切换为「${mirror}」` : `${tool.display} 已恢复官方源`);
+    showMsg(
+      mirror
+        ? t("toast.toolMirrorSet", { tool: tool.display, mirror })
+        : t("toast.toolMirrorReset", { tool: tool.display })
+    );
   } catch (e) {
-    showErr(`切换镜像失败：${errMsg(e)}`);
+    showErr(t("toast.toolMirrorFailed", { msg: errMsg(e) }));
   }
 }
 
 async function addLuaPlugin() {
-  if (!state.luaName.trim() || !state.luaScript.trim()) return showMsg("请填写插件名称与脚本");
+  if (!state.luaName.trim() || !state.luaScript.trim()) return showMsg(t("toast.luaFieldsRequired"));
   try {
     await run<void>("add_lua_plugin", { name: state.luaName.trim(), script: state.luaScript });
-    showMsg(`Lua 插件 ${state.luaName.trim()} 已添加`);
+    showMsg(t("toast.luaAdded", { name: state.luaName.trim() }));
     state.luaName = "";
     state.luaScript = "";
     await Promise.all([loadTools(), loadP2()]);
   } catch (e) {
-    showErr(`添加 Lua 插件失败：${errMsg(e)}`);
+    showErr(t("toast.luaAddFailed", { msg: errMsg(e) }));
   }
 }
 
 /** 更新已有插件源码（编辑模式；Lua 校验 + 原子写回） */
 async function saveLuaPlugin(name: string, provider: string, script: string) {
-  if (!script.trim()) return showMsg("脚本为空");
+  if (!script.trim()) return showMsg(t("toast.scriptEmpty"));
   try {
     await run<void>("save_plugin_source", { name, provider, script });
-    showMsg(`插件 ${name} 已保存`);
+    showMsg(t("toast.pluginSaved", { name }));
     await Promise.all([loadTools(), loadP2()]);
   } catch (e) {
-    showErr(`保存插件失败：${errMsg(e)}`);
+    showErr(t("toast.pluginSaveFailed", { msg: errMsg(e) }));
   }
 }
 
@@ -864,7 +898,7 @@ async function loadPluginSource(name: string): Promise<{ name: string; provider:
   try {
     return await run<{ name: string; provider: string; script: string }>("read_plugin_source", { name });
   } catch (e) {
-    showErr(`读取插件失败：${errMsg(e)}`);
+    showErr(t("toast.pluginReadFailed", { msg: errMsg(e) }));
     return null;
   }
 }
@@ -873,26 +907,32 @@ async function loadPluginSource(name: string): Promise<{ name: string; provider:
 async function togglePlugin(name: string, enable: boolean) {
   try {
     await run<void>("toggle_plugin", { name, enable });
-    showMsg(`插件 ${name} 已${enable ? "启用" : "禁用"}`);
+    showMsg(
+      enable ? t("toast.pluginEnabled", { name }) : t("toast.pluginDisabled", { name })
+    );
     await Promise.all([loadTools(), loadP2()]);
   } catch (e) {
-    showErr(`${enable ? "启用" : "禁用"}插件失败：${errMsg(e)}`);
+    showErr(
+      enable
+        ? t("toast.pluginEnableFailed", { msg: errMsg(e) })
+        : t("toast.pluginDisableFailed", { msg: errMsg(e) })
+    );
   }
 }
 
 /** 删除插件（确认由调用方弹出；仅删插件定义，已安装版本保留） */
 async function deletePlugin(name: string, display: string) {
   const ok = await confirmAsk(
-    `删除插件 ${name}`,
-    `将删除插件「${display}」（${name}）的定义目录。\n\n已安装的版本文件会保留在缓存中，可在「统计」页清理。`
+    t("dialog.deletePlugin.title", { name }),
+    t("dialog.deletePlugin.content", { name, display })
   );
   if (!ok) return;
   try {
     await run<void>("delete_plugin", { name });
-    showMsg(`插件 ${name} 已删除`);
+    showMsg(t("toast.pluginDeleted", { name }));
     await Promise.all([loadTools(), loadP2()]);
   } catch (e) {
-    showErr(`删除插件失败：${errMsg(e)}`);
+    showErr(t("toast.pluginDeleteFailed", { msg: errMsg(e) }));
   }
 }
 
@@ -901,7 +941,7 @@ async function openPluginDir(name: string) {
   try {
     await run<void>("open_plugin_dir", { name });
   } catch (e) {
-    showErr(`打开插件目录失败：${errMsg(e)}`);
+    showErr(t("toast.pluginDirFailed", { msg: errMsg(e) }));
   }
 }
 
@@ -909,7 +949,7 @@ async function saveSettings(silent = false) {
   const entries = state.registryEntries
     .map((e) => ({ name: (e.name ?? "").trim(), url: (e.url ?? "").trim() }))
     .filter((e) => e.url);
-  if (entries.length === 0) return showErr("至少需要配置一个插件仓库地址");
+  if (entries.length === 0) return showErr(t("toast.registryRequired"));
   const oldRegistry = state.remoteRegistry;
   try {
     await run<void>("update_config", {
@@ -917,14 +957,14 @@ async function saveSettings(silent = false) {
       registryEntries: entries,
       storagePath: state.storagePath.trim() || null,
     });
-    if (!silent) showMsg("配置已保存（存储路径修改需重启应用生效）");
+    if (!silent) showMsg(t("toast.configSaved"));
     await loadSettings();
     // 当前选中地址被删除时，回退到新列表并刷新插件市场
     if (!entries.some((e) => e.url === oldRegistry)) {
       await loadRemotePlugins();
     }
   } catch (e) {
-    showErr(`保存配置失败：${errMsg(e)}`);
+    showErr(t("toast.configSaveFailed", { msg: errMsg(e) }));
   }
 }
 
@@ -932,20 +972,20 @@ async function doExport(format: "yaml" | "json") {
   try {
     state.exportText = await run<string>("export_env", { format });
   } catch (e) {
-    showErr(`导出失败：${errMsg(e)}`);
+    showErr(t("toast.exportFailed", { msg: errMsg(e) }));
   }
 }
 
 async function doImport() {
-  if (!state.importText.trim()) return showMsg("请先粘贴要导入的环境快照");
+  if (!state.importText.trim()) return showMsg(t("toast.importRequired"));
   try {
     await run<void>("import_env", { content: state.importText });
-    showMsg("环境快照导入并应用成功");
+    showMsg(t("toast.imported"));
     state.importText = "";
     state.exportText = null;
     await loadAll();
   } catch (e) {
-    showErr(`导入失败：${errMsg(e)}`);
+    showErr(t("toast.importFailed", { msg: errMsg(e) }));
   }
 }
 
@@ -953,22 +993,25 @@ async function doImport() {
 async function saveProjectPreset(p: ProjectPreset) {
   try {
     await run<void>("save_project", { preset: p });
-    showMsg(`项目预设「${p.name}」已保存`);
+    showMsg(t("toast.projectSaved", { name: p.name }));
     await loadProjects();
   } catch (e) {
-    showErr(`保存项目预设失败：${errMsg(e)}`);
+    showErr(t("toast.projectSaveFailed", { msg: errMsg(e) }));
   }
 }
 
 async function deleteProjectPreset(name: string) {
-  const ok = await confirmAsk(`删除项目预设「${name}」`, "不影响项目目录本身。");
+  const ok = await confirmAsk(
+    t("dialog.deleteProject.title", { name }),
+    t("dialog.deleteProject.content")
+  );
   if (!ok) return;
   try {
     await run<void>("delete_project", { name });
-    showMsg(`项目预设「${name}」已删除`);
+    showMsg(t("toast.projectDeleted", { name }));
     await loadProjects();
   } catch (e) {
-    showErr(`删除项目预设失败：${errMsg(e)}`);
+    showErr(t("toast.projectDeleteFailed", { msg: errMsg(e) }));
   }
 }
 
@@ -976,9 +1019,9 @@ async function launchProjectSession(name: string, command: string, args: string[
   state.busy = `session-${name}`;
   try {
     await run<void>("launch_session", { project: name, command, args });
-    showMsg(`已按「${name}」预设启动 ${command}：新窗口已打开，请到任务栏查看`);
+    showMsg(t("toast.sessionLaunched", { name, command }));
   } catch (e) {
-    showErr(`启动失败：${errMsg(e)}`);
+    showErr(t("toast.sessionLaunchFailed", { msg: errMsg(e) }));
   } finally {
     state.busy = null;
   }

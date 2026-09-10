@@ -2,16 +2,19 @@
 // InstallToolModal —— 安装新版本弹窗：发行商 × 版本列表单选 + 拉取 + 安装 + 实时进度
 // 低频操作从卡片中剥离，弹窗内提供充足空间展示版本列表与下载进度。
 import { computed, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { NModal, NSelect, NButton, NProgress, NTag } from "naive-ui";
 import { useApp, store } from "../store";
 import ToolIcon from "./ToolIcon.vue";
 import type { ToolInfo } from "../types";
 import { compareVersions, versionsKey, lastNonFx, fmtSpeed, fmtBytes } from "../types";
+import { stageLabel } from "../i18n";
 
 const props = defineProps<{ show: boolean; tool: ToolInfo | null }>();
 const emit = defineEmits<{ (e: "update:show", v: boolean): void }>();
 
 const app = useApp();
+const { t } = useI18n();
 
 const sel = computed(() => (props.tool ? app.selections[props.tool.name] ?? { version: "" } : { version: "" }));
 const key = computed(() => (props.tool ? versionsKey(props.tool.name, sel.value.dist) : ""));
@@ -37,7 +40,7 @@ const currentMirror = computed(() => (props.tool ? store.currentToolMirror(props
 const mirrorOptions = computed(() => {
   if (!props.tool?.mirrors || props.tool.mirrors.length === 0) return [];
   const seen = new Set<string>();
-  const opts: { label: string; value: string }[] = [{ label: "官方源", value: "" }];
+  const opts: { label: string; value: string }[] = [{ label: t("install.officialSource"), value: "" }];
   for (const m of props.tool.mirrors) {
     if (m.from === m.to) continue; // 官方占位不进下拉
     if (seen.has(m.name)) continue;
@@ -69,24 +72,12 @@ function onMirrorChange(v: string) {
   void store.setToolMirror(props.tool, v || null);
 }
 
-const STAGE_TEXT: Record<string, string> = {
-  resolving: "解析版本",
-  downloading: "下载中",
-  verifying: "校验中",
-  extracting: "解压中",
-  done: "完成",
-  failed: "失败",
-};
-
-function stageText(stage: string): string {
-  return STAGE_TEXT[stage] ?? "执行中";
-}
-
+// 阶段文案统一走 i18n（stage.*），不再维护本地映射表
 const installBtnText = computed(() => {
-  if (isInstalling.value) return "安装中…";
-  if (!sel.value.version) return "请选择版本";
-  if (selVersionInstalled.value) return "该版本已安装";
-  return `安装 ${sel.value.version}`;
+  if (isInstalling.value) return t("install.installing");
+  if (!sel.value.version) return t("install.selectVersion");
+  if (selVersionInstalled.value) return t("install.versionInstalled");
+  return t("install.installVersion", { version: sel.value.version });
 });
 
 // 打开弹窗：该发行商下无缓存时自动拉取一次版本列表
@@ -140,13 +131,13 @@ watch(versionList, (list) => {
     <template v-if="tool" #header>
       <span class="modal-title">
         <ToolIcon :icon="tool.icon" :size="18" :name="tool.display" />
-        <span>安装 {{ tool.display }} 新版本</span>
+        <span>{{ t("install.title", { name: tool.display }) }}</span>
       </span>
     </template>
     <div v-if="tool" class="install-modal">
       <!-- 发行商 × 拉取 -->
       <div class="ctrl-row">
-        <span v-if="hasDist" class="lbl">发行商</span>
+        <span v-if="hasDist" class="lbl">{{ t("install.distribution") }}</span>
         <n-select
           v-if="hasDist"
           size="small"
@@ -154,7 +145,7 @@ watch(versionList, (list) => {
           :value="sel.dist ?? ''"
           :options="distOptions"
           :disabled="busyTool"
-          placeholder="发行商"
+          :placeholder="t('install.distribution')"
           @update:value="(d: string) => (app.selections[tool!.name] = { dist: d, version: '' })"
         />
         <n-button
@@ -163,23 +154,27 @@ watch(versionList, (list) => {
           :disabled="busyTool || refreshing"
           @click="store.loadVersions(tool, true)"
         >
-          拉取
+          {{ t("install.pull") }}
         </n-button>
         <span class="muted list-count">
-          {{ cachedVersions.length ? `${cachedVersions.length} 个版本` : "暂无缓存，点击「拉取」获取版本列表" }}
+          {{
+            cachedVersions.length
+              ? t("install.versionCount", { count: cachedVersions.length })
+              : t("install.noCache")
+          }}
         </span>
       </div>
 
       <!-- 加速镜像（可选）：插件 TOOL.mirrors 声明时显示；选官方源即不镜像 -->
       <div v-if="mirrorOptions.length > 0" class="ctrl-row">
-        <span class="lbl">加速镜像</span>
+        <span class="lbl">{{ t("install.mirror") }}</span>
         <n-select
           size="small"
           class="ctrl-select"
           :value="currentMirror ?? ''"
           :options="mirrorOptions"
           :disabled="busyTool"
-          placeholder="选择镜像…"
+          :placeholder="t('install.mirrorPlaceholder')"
           @update:value="onMirrorChange"
         />
         <span v-if="mirrorRuleText" class="muted mirror-rule mono" :title="mirrorRuleText">{{ mirrorRuleText }}</span>
@@ -204,14 +199,16 @@ watch(versionList, (list) => {
             {{ v }}<span v-if="v.includes('.fx-')" class="ver-fx"> FX</span>
           </span>
           <span class="ver-status">
-            <n-tag v-if="tool.current === v" size="tiny" type="primary" :bordered="false" round>当前</n-tag>
+            <n-tag v-if="tool.current === v" size="tiny" type="primary" :bordered="false" round>
+              {{ t("common.current") }}
+            </n-tag>
             <n-tag v-else-if="tool.installed.includes(v)" size="tiny" type="success" :bordered="false" round>
-              已安装
+              {{ t("common.installed") }}
             </n-tag>
           </span>
         </label>
       </div>
-      <div v-else class="empty-box muted">没有可用版本，点击「拉取」从版本源获取</div>
+      <div v-else class="empty-box muted">{{ t("install.noVersions") }}</div>
 
       <!-- 下载进度 -->
       <div v-if="isInstalling && app.progress" class="progress-box">
@@ -223,7 +220,7 @@ watch(versionList, (list) => {
           status="success"
         />
         <div class="progress-meta mono">
-          {{ stageText(app.progress.stage) }} · {{ app.progress.percent.toFixed(0) }}%
+          {{ stageLabel(app.progress.stage) }} · {{ app.progress.percent.toFixed(0) }}%
           <template v-if="app.progress.speedMbps != null"> · {{ fmtSpeed(app.progress.speedMbps) }}</template>
           <template v-if="app.progress.totalBytes != null">
             · {{ fmtBytes(app.progress.downloadedBytes ?? 0) }} / {{ fmtBytes(app.progress.totalBytes) }}
@@ -236,7 +233,9 @@ watch(versionList, (list) => {
 
       <!-- 底部 -->
       <div class="foot">
-        <n-button size="small" :disabled="busyTool" @click="emit('update:show', false)">关闭</n-button>
+        <n-button size="small" :disabled="busyTool" @click="emit('update:show', false)">
+          {{ t("install.close") }}
+        </n-button>
         <n-button
           size="small"
           type="primary"

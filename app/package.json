@@ -16,7 +16,8 @@
     "@tauri-apps/plugin-updater": "^2.10.1",
     "@vicons/ionicons5": "^0.13.0",
     "naive-ui": "^2.44.1",
-    "vue": "^3.5.41"
+    "vue": "^3.5.41",
+    "vue-i18n": "^11.4.10"
   },
   "devDependencies": {
     "@tauri-apps/cli": "^2.0.0",

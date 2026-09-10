@@ -2,6 +2,7 @@
 // ToolIcon ——工具图标统一渲染：有图标显示 <img>（data URI），
 // 加载失败 / 无图标回退 DOT_COLORS 彩色圆点（保持旧版身份标识语义）
 import { computed, ref } from "vue";
+import { useI18n } from "vue-i18n";
 import { DOT_COLORS } from "../types";
 
 const props = withDefaults(
@@ -18,6 +19,7 @@ const props = withDefaults(
   { icon: null, size: 18, index: 0, name: "" }
 );
 
+const { t } = useI18n();
 const failed = ref(false);
 const showImg = computed(() => !!props.icon && !failed.value);
 const imgSrc = computed(() => props.icon ?? undefined);
@@ -33,7 +35,7 @@ const fallbackColor = computed(() => DOT_COLORS[props.index % DOT_COLORS.length]
     <img
       v-if="showImg"
       :src="imgSrc"
-      :alt="name || '工具图标'"
+      :alt="name || t('common.toolIconAlt')"
       class="tool-icon-img"
       :style="{ width: `${size}px`, height: `${size}px` }"
       draggable="false"

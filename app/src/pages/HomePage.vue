@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed } from "vue";
+import { useI18n } from "vue-i18n";
 import { NButton, NCard, NCollapse, NCollapseItem, NModal, NForm, NFormItem, NInput, NAlert, NTooltip, NPopselect } from "naive-ui";
 import { useApp, store, showMsg } from "../store";
 import EnvTable from "../components/EnvTable.vue";
@@ -12,6 +13,7 @@ import type { ProjectPreset, ProjectToolVersion, ToolEnvInfo } from "../types";
 import ToolIcon from "../components/ToolIcon.vue";
 
 const app = useApp();
+const { t } = useI18n();
 
 const editorOpen = ref(false);
 const editing = ref<ProjectPreset | null>(null);
@@ -51,13 +53,13 @@ function cloneGlobal() {
     }
   }
   presetVersions.value = list;
-  showMsg("已带入当前全局版本组合");
+  showMsg(t("home.msg.clonedGlobal"));
 }
 
 function doSave() {
-  if (!presetName.value.trim()) return showMsg("请填写预设名称");
-  if (!presetDir.value.trim()) return showMsg("请填写项目目录");
-  if (presetVersions.value.some((v) => !v.version)) return showMsg("请为每个工具选择已安装的版本（未安装请先到「工具管理」下载）");
+  if (!presetName.value.trim()) return showMsg(t("home.msg.nameRequired"));
+  if (!presetDir.value.trim()) return showMsg(t("home.msg.dirRequired"));
+  if (presetVersions.value.some((v) => !v.version)) return showMsg(t("home.msg.versionRequired"));
   void store.saveProjectPreset({
     name: presetName.value.trim(),
     dir: presetDir.value.trim(),
@@ -80,7 +82,7 @@ function installedOf(s: ToolEnvInfo): string[] {
 /** 切换下拉的选项：已安装版本，当前版本追加「· 当前」标注 */
 function switchOptions(s: ToolEnvInfo) {
   return installedOf(s).map((v) => ({
-    label: v === s.version ? `${v} · 当前` : v,
+    label: v === s.version ? t("home.global.currentSuffix", { version: v }) : v,
     value: v,
   }));
 }
@@ -106,26 +108,28 @@ function unuseGlobalFor(s: ToolEnvInfo) {
 
 /**工具分类的友好显示：language → 语言；build → 构建工具；其他原样（如未来新增的 maven 等） */
 function categoryLabel(c: string | null | undefined): string {
-  const map: Record<string, string> = { language: "语言", build: "构建工具", tool: "工具" };
+  const map: Record<string, string> = {
+    language: t("home.category.language"),
+    build: t("home.category.build"),
+    tool: t("home.category.tool"),
+  };
   return (c && map[c]) || c || "";
 }
 </script>
 
 <template>
   <section class="section">
-    <p class="page-desc">
-      切换工具即写入系统变量（新终端生效，已打开窗口需重启）；项目环境按预设版本组合启动会话，不写系统变量。
-    </p>
+    <p class="page-desc">{{ t("home.desc") }}</p>
 
     <n-alert v-if="!app.home && !app.backend" type="warning" :bordered="false" class="preview-banner">
-      预览模式：仅展示 UI，未连接 Rust 后端。
+      {{ t("common.previewBanner") }}
     </n-alert>
 
     <!-- ============ 全局环境（系统级） ============ -->
-    <n-card size="small" title="全局环境（系统级）" class="section-card" :bordered="true">
+    <n-card size="small" :title="t('home.global.title')" class="section-card" :bordered="true">
       <template #header-extra>
         <span class="home-summary mono">
-          生效工具{{ activeTools.length }} · 环境变量 {{ envVarCount }} · PATH 条目 {{ pathCount }}
+          {{ t("home.global.summary", { tools: activeTools.length, vars: envVarCount, paths: pathCount }) }}
         </span>
       </template>
 
@@ -137,8 +141,8 @@ function categoryLabel(c: string | null | undefined): string {
 
       <EmptyState
         v-else-if="activeTools.length === 0"
-        hint="当前还没有全局环境"
-        action-label="前往工具管理"
+        :hint="t('home.global.emptyHint')"
+        :action-label="t('home.global.emptyAction')"
         @action="app.page = 'tools'"
       />
 
@@ -154,11 +158,11 @@ function categoryLabel(c: string | null | undefined): string {
           </div>
 
           <!-- 大版本号（mono） -->
-          <div class="mini-version">{{ s.version ?? "未配置版本" }}</div>
+          <div class="mini-version">{{ s.version ?? t("home.global.noVersion") }}</div>
 
           <!-- 元信息：已装数量 -->
           <div class="mini-meta">
-            <span>已装 {{ installedOf(s).length }} 个版本</span>
+            <span>{{ t("home.global.installedCount", { count: installedOf(s).length }) }}</span>
           </div>
 
           <div class="mini-foot">
@@ -188,10 +192,10 @@ function categoryLabel(c: string | null | undefined): string {
                       <path d="M7 11V7a5 5 0 0 1 9.9-1" />
                     </svg>
                   </template>
-                  解除
+                  {{ t("home.global.unuse") }}
                 </n-button>
               </template>
-              解除该工具的环境变量
+              {{ t("home.global.unuseTip") }}
             </n-tooltip>
             <!-- 切换：主按钮（图标 + 文本） -->
             <n-popselect
@@ -203,7 +207,7 @@ function categoryLabel(c: string | null | undefined): string {
               placement="bottom-end"
               size="small"
               scrollable
-              :title="`已安装 ${installedOf(s).length} 个版本，点选目标版本即切换（写入系统变量，新终端生效）`"
+              :title="t('home.global.switchTip', { count: installedOf(s).length })"
               @update:value="(v: string) => onSwitchSelect(s, v)"
             >
               <n-button
@@ -231,7 +235,7 @@ function categoryLabel(c: string | null | undefined): string {
                     <path d="M20 17H4" />
                   </svg>
                 </template>
-                {{ switchDisabled(s) ? "唯一版本" : "切换" }}
+                {{ switchDisabled(s) ? t("home.global.onlyVersion") : t("home.global.switch") }}
               </n-button>
             </n-popselect>
           </div>
@@ -242,7 +246,7 @@ function categoryLabel(c: string | null | undefined): string {
       <n-collapse v-if="app.home && app.home.merged.length > 0" class="env-collapse">
         <n-collapse-item name="env" title="">
           <template #header>
-            <span>环境变量总览（{{ app.home.merged.length }} 项）</span>
+            <span>{{ t("home.global.envOverview", { count: app.home.merged.length }) }}</span>
           </template>
           <EnvTable :rows="app.home.merged" />
         </n-collapse-item>
@@ -250,18 +254,18 @@ function categoryLabel(c: string | null | undefined): string {
     </n-card>
 
     <!-- ============ 项目环境（会话级） ============ -->
-    <n-card size="small" title="项目环境（会话级）" class="section-card" :bordered="true">
+    <n-card size="small" :title="t('home.project.title')" class="section-card" :bordered="true">
       <template #header-extra>
-        <n-button size="small" quaternary @click="openNew">新建预设</n-button>
+        <n-button size="small" quaternary @click="openNew">{{ t("home.project.newPreset") }}</n-button>
       </template>
       <p class="muted proj-hint">
-        项目 = 目录 + 命名 + 版本组合；「启动终端」注入该组合的环境变量（JAVA_HOME、PATH 指向预设版本），不写系统变量，关窗即消失。
+        {{ t("home.project.hint") }}
       </p>
 
       <EmptyState
         v-if="app.projects.length === 0"
-        hint="当前还没有项目环境"
-        action-label="新建第一个项目环境"
+        :hint="t('home.project.emptyHint')"
+        :action-label="t('home.project.emptyAction')"
         @action="openNew"
       />
       <div v-else class="proj-list">
@@ -278,16 +282,16 @@ function categoryLabel(c: string | null | undefined): string {
     <n-modal
       v-model:show="editorOpen"
       preset="card"
-      :title="editing ? `编辑预设「${editing.name}」` : '新建项目预设'"
+      :title="editing ? t('home.project.editTitle', { name: editing.name }) : t('home.project.newTitle')"
       style="width: 640px"
       :mask-closable="true"
     >
       <n-form label-placement="left" label-width="60" style="margin-bottom: 12px">
-        <n-form-item label="名称">
-          <n-input v-model:value="presetName" placeholder="如 order-service" />
+        <n-form-item :label="t('home.project.nameLabel')">
+          <n-input v-model:value="presetName" :placeholder="t('home.project.namePlaceholder')" />
         </n-form-item>
-        <n-form-item label="目录">
-          <n-input v-model:value="presetDir" placeholder="D:\work\order-service" />
+        <n-form-item :label="t('home.project.dirLabel')">
+          <n-input v-model:value="presetDir" :placeholder="t('home.project.dirPlaceholder')" />
         </n-form-item>
       </n-form>
 
@@ -299,8 +303,8 @@ function categoryLabel(c: string | null | undefined): string {
 
       <template #footer>
         <div class="modal-foot">
-          <n-button @click="editorOpen = false">取消</n-button>
-          <n-button type="primary" @click="doSave">保存预设</n-button>
+          <n-button @click="editorOpen = false">{{ t("common.cancel") }}</n-button>
+          <n-button type="primary" @click="doSave">{{ t("home.project.save") }}</n-button>
         </div>
       </template>
     </n-modal>

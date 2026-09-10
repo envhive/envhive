@@ -1,10 +1,12 @@
 <script setup lang="ts">
 // 设置 —— 通用 / 存储 / 数据管理（导入导出）/ 关于
 import { onUnmounted, ref, watch } from "vue";
+import { useI18n } from "vue-i18n";
 import { NButton, NInput, NSwitch, NCard, NTooltip } from "naive-ui";
 import { useApp, store, showMsg, showErr } from "../store";
 
 const app = useApp();
+const { t } = useI18n();
 const newRegistryName = ref("");
 const newRegistryUrl = ref("");
 
@@ -46,8 +48,8 @@ onUnmounted(() => {
 function copyExport() {
   if (!app.exportText) return;
   void navigator.clipboard?.writeText(app.exportText).then(
-    () => showMsg("已复制到剪贴板"),
-    () => showMsg("复制失败（预览模式下不可用）")
+    () => showMsg(t("settings.msgCopied")),
+    () => showMsg(t("settings.msgCopyFailed"))
   );
 }
 
@@ -58,16 +60,16 @@ function updateRegistryEntry(i: number, key: "name" | "url", v: string) {
 function addRegistryEntry() {
   const name = newRegistryName.value.trim();
   const url = newRegistryUrl.value.trim().replace(/\/+$/, "");
-  if (!name) return showMsg("请输入仓库名（如：官方gitee）");
-  if (!url) return showMsg("请输入 manifest.json 完整地址（如：https://raw.giteeusercontent.com/envhive/envhive/raw/main/plugins/manifest.json）");
-  if (app.registryEntries.some((e) => e.url === url)) return showMsg("该仓库地址已存在");
+  if (!name) return showMsg(t("settings.msgNameRequired"));
+  if (!url) return showMsg(t("settings.msgUrlRequired"));
+  if (app.registryEntries.some((e) => e.url === url)) return showMsg(t("settings.msgUrlExists"));
   app.registryEntries.push({ name, url });
   newRegistryName.value = "";
   newRegistryUrl.value = "";
 }
 
 function removeRegistryEntry(i: number) {
-  if (app.registryEntries.length <= 1) return showErr("至少保留一个插件仓库");
+  if (app.registryEntries.length <= 1) return showErr(t("settings.msgKeepOne"));
   app.registryEntries.splice(i, 1);
 }
 </script>
@@ -75,9 +77,9 @@ function removeRegistryEntry(i: number) {
 <template>
   <section class="section">
     <!-- ============ 通用 ============ -->
-    <n-card size="small" title="通用" class="section-card" :bordered="true">
+    <n-card size="small" :title="t('settings.general')" class="section-card" :bordered="true">
       <div class="settings-row">
-        <span class="proxy-label">开机自启动</span>
+        <span class="proxy-label">{{ t("settings.autostart") }}</span>
         <div style="flex: 1" />
         <n-switch
           :value="app.autostart"
@@ -87,7 +89,7 @@ function removeRegistryEntry(i: number) {
         />
       </div>
       <div class="settings-row">
-        <span class="proxy-label">关闭窗口时隐藏到系统托盘</span>
+        <span class="proxy-label">{{ t("settings.trayResident") }}</span>
         <div style="flex: 1" />
         <n-switch
           :value="app.trayResident"
@@ -99,9 +101,9 @@ function removeRegistryEntry(i: number) {
     </n-card>
 
     <!-- ============ 下载代理 ============ -->
-    <n-card size="small" title="代理" class="section-card" :bordered="true">
+    <n-card size="small" :title="t('settings.proxy')" class="section-card" :bordered="true">
       <div class="proxy-label-row">
-        <span class="proxy-label">下载代理</span>
+        <span class="proxy-label">{{ t("settings.downloadProxy") }}</span>
         <div style="flex: 1" />
         <n-switch
           :value="app.proxyEnable"
@@ -110,7 +112,7 @@ function removeRegistryEntry(i: number) {
         />
       </div>
       <div class="proxy-addr-row">
-        <label class="proxy-label proxy-addr-label">代理地址</label>
+        <label class="proxy-label proxy-addr-label">{{ t("settings.proxyAddr") }}</label>
         <n-input
           v-model:value="app.proxyUrl"
           placeholder="http://127.0.0.1:7890"
@@ -120,16 +122,16 @@ function removeRegistryEntry(i: number) {
     </n-card>
 
     <!-- ============ 存储 ============ -->
-    <n-card size="small" title="存储" class="section-card" :bordered="true">
+    <n-card size="small" :title="t('settings.storage')" class="section-card" :bordered="true">
       <div class="settings-form">
         <div class="settings-row">
           <label class="proxy-label ttl-label">
-            缓存有效期
+            {{ t("settings.cacheTtl") }}
             <n-tooltip trigger="hover" placement="top">
               <template #trigger>
                 <span class="help-icon">?</span>
               </template>
-              <span>拉取的版本列表缓存的保留时长，支持格式：12h（12小时）、3600（秒）、-1（永不过期）、0（禁用缓存）</span>
+              <span>{{ t("settings.cacheTtlTip") }}</span>
             </n-tooltip>
           </label>
           <n-input
@@ -139,68 +141,68 @@ function removeRegistryEntry(i: number) {
           />
         </div>
         <div class="settings-row reg-addrs-row">
-          <label class="proxy-label" style="min-width: 120px">插件仓库</label>
+          <label class="proxy-label" style="min-width: 120px">{{ t("settings.registries") }}</label>
           <div class="reg-addrs">
             <div v-for="(e, i) in app.registryEntries" :key="i" class="reg-addr-row">
               <n-input
                 :value="e.name"
-                placeholder="仓库名（如：官方gitee）"
+                :placeholder="t('settings.registryNamePlaceholder')"
                 class="reg-name-input"
                 @update:value="(v: string) => updateRegistryEntry(i, 'name', v)"
               />
               <n-input
                 :value="e.url"
-                placeholder="https://example.com/repo/main/manifest.json"
+                :placeholder="t('settings.registryUrlPlaceholder')"
                 @update:value="(v: string) => updateRegistryEntry(i, 'url', v)"
               />
-              <n-button size="small" quaternary circle title="删除该仓库" @click="removeRegistryEntry(i)">
+              <n-button size="small" quaternary circle :title="t('settings.deleteRepo')" @click="removeRegistryEntry(i)">
                 ✕
               </n-button>
             </div>
             <div class="reg-addr-row">
               <n-input
                 v-model:value="newRegistryName"
-                placeholder="仓库名（如：官方gitee）"
+                :placeholder="t('settings.registryNamePlaceholder')"
                 class="reg-name-input"
               />
               <n-input
                 v-model:value="newRegistryUrl"
-                placeholder="manifest.json 完整地址（如：https://raw.giteeusercontent.com/envhive/envhive/raw/main/plugins/manifest.json）"
+                :placeholder="t('settings.registryUrlFullPlaceholder')"
                 @keyup.enter="addRegistryEntry"
               />
-              <n-button size="small" @click="addRegistryEntry">添加</n-button>
+              <n-button size="small" @click="addRegistryEntry">{{ t("common.add") }}</n-button>
             </div>
           </div>
         </div>
         <div class="settings-row">
-          <label class="proxy-label" style="min-width: 120px">工具存储路径</label>
+          <label class="proxy-label" style="min-width: 120px">{{ t("settings.storagePath") }}</label>
           <n-input
             v-model:value="app.storagePath"
             placeholder="~/.envhive/installs"
             style="max-width: 360px"
           />
-          <span class="muted">⚠️ 修改需重启生效</span>
+          <span class="muted">{{ t("settings.storagePathWarning") }}</span>
         </div>
         <div class="settings-row">
           <span class="muted config-hint">
-            配置文件：{{ app.bootstrap?.configFile || "~/.envhive/config.yaml" }}
+            {{ t("settings.configFile", { path: app.bootstrap?.configFile || "~/.envhive/config.yaml" }) }}
           </span>
         </div>
       </div>
     </n-card>
 
     <!-- ============ 数据管理（导入导出） ============ -->
-    <n-card size="small" title="数据管理（导入导出）" class="section-card" :bordered="true">
+    <n-card size="small" :title="t('settings.dataMgmt')" class="section-card" :bordered="true">
       <div class="envbar-wrap">
         <div class="settings-row">
-          <n-button type="primary" size="small" @click="store.doExport('yaml')">导出 YAML</n-button>
-          <n-button size="small" @click="store.doExport('json')">导出 JSON</n-button>
-          <span class="muted export-hint">导出当前全局工具版本、镜像、代理与环境变量快照</span>
+          <n-button type="primary" size="small" @click="store.doExport('yaml')">{{ t("settings.exportYaml") }}</n-button>
+          <n-button size="small" @click="store.doExport('json')">{{ t("settings.exportJson") }}</n-button>
+          <span class="muted export-hint">{{ t("settings.exportHint") }}</span>
         </div>
 
         <pre v-if="app.exportText" class="export-box">{{ app.exportText }}</pre>
         <div v-if="app.exportText" class="settings-row">
-          <n-button size="small" @click="copyExport">复制导出内容</n-button>
+          <n-button size="small" @click="copyExport">{{ t("settings.copyExport") }}</n-button>
         </div>
 
         <div class="import-box">
@@ -208,20 +210,26 @@ function removeRegistryEntry(i: number) {
             v-model:value="app.importText"
             type="textarea"
             :rows="5"
-            placeholder="粘贴导出的环境快照（YAML / JSON），导入将写全局工具版本、镜像、代理与环境变量"
+            :placeholder="t('settings.importPlaceholder')"
           />
-          <n-button type="primary" size="small" @click="store.doImport()">导入并应用</n-button>
+          <n-button type="primary" size="small" @click="store.doImport()">{{ t("settings.importApply") }}</n-button>
         </div>
       </div>
     </n-card>
 
     <!-- ============ 关于 ============ -->
-    <n-card size="small" title="关于" class="section-card" :bordered="true">
+    <n-card size="small" :title="t('settings.about')" class="section-card" :bordered="true">
       <span class="mono muted">
         {{
           app.bootstrap
-            ? `版本 ${app.bootstrap.version} · ${app.bootstrap.platform}/${app.bootstrap.arch} · 配置 ${app.bootstrap.configWritable ? "可写" : "不可写"} · 安装目录 ${app.bootstrap.installDir}`
-            : "加载中…"
+            ? t("settings.aboutLine", {
+                version: app.bootstrap.version,
+                platform: app.bootstrap.platform,
+                arch: app.bootstrap.arch,
+                writable: app.bootstrap.configWritable ? t("settings.writable") : t("settings.notWritable"),
+                dir: app.bootstrap.installDir,
+              })
+            : t("common.loadingEllipsis")
         }}
       </span>
     </n-card>

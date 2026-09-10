@@ -2,6 +2,7 @@
 // QueueDrawer —— 全局悬浮队列抽屉（右下角 FAB + 抽屉）
 // v2 优化：耗时展示 / 失败+取消可重试 / 全部取消+清空已完成 / ETA / 阶段脉动条 / URL 折叠复制 / FAB 空队列隐藏
 import { computed, reactive } from "vue";
+import { useI18n } from "vue-i18n";
 import {
   NButton,
   NDrawer,
@@ -12,9 +13,8 @@ import {
   NFloatButton,
 } from "naive-ui";
 import { useApp, store, showErr, showMsg, errMsg } from "../store";
+import { stageLabel, taskStatusLabel } from "../i18n";
 import {
-  STAGE_TEXT,
-  TASK_STATUS_TEXT,
   fmtSpeed,
   fmtBytes,
   fmtDuration,
@@ -24,13 +24,14 @@ import {
 import type { QueueTask, QueueEnqueueResult } from "../types";
 
 const app = useApp();
+const { t } = useI18n();
 
 const runningCount = computed(
-  () => app.queue.filter((t) => t.status === "running" || t.status === "queued").length
+  () => app.queue.filter((task) => task.status === "running" || task.status === "queued").length
 );
 
 const hasFinished = computed(() =>
-  app.queue.some((t) => t.status === "done" || t.status === "failed" || t.status === "cancelled")
+  app.queue.some((task) => task.status === "done" || task.status === "failed" || task.status === "cancelled")
 );
 
 const statusType: Record<QueueTask["status"], "info" | "success" | "error" | "warning" | "default"> = {
@@ -42,78 +43,78 @@ const statusType: Record<QueueTask["status"], "info" | "success" | "error" | "wa
 };
 
 // 运行中任务显示实时阶段文本（合并 download-progress 回填的 stage），其余显示任务状态
-function statusLabel(t: QueueTask): string {
-  if (t.status === "running" && t.stage) return STAGE_TEXT[t.stage] ?? "执行中";
-  return TASK_STATUS_TEXT[t.status];
+function statusLabel(task: QueueTask): string {
+  if (task.status === "running" && task.stage) return stageLabel(task.stage);
+  return taskStatusLabel(task.status);
 }
 
 // 进度摘要：下载中显示 百分比 + 速度（<1MB/s 自动转 KB/s）；其余阶段只显示百分比
-function progressText(t: QueueTask): string {
-  const pct = `${Math.max(0, Math.min(100, t.percent)).toFixed(0)}%`;
-  if (t.stage === "downloading" && t.speedMbps != null) {
-    return `${pct} · ${fmtSpeed(t.speedMbps)}`;
+function progressText(task: QueueTask): string {
+  const pct = `${Math.max(0, Math.min(100, task.percent)).toFixed(0)}%`;
+  if (task.stage === "downloading" && task.speedMbps != null) {
+    return `${pct} · ${fmtSpeed(task.speedMbps)}`;
   }
   return pct;
 }
 
 // ETA：下载中且大小/速度齐全时，按 (剩余字节 / 速度) 估算剩余时间
-function etaText(t: QueueTask): string {
-  if (t.stage !== "downloading" || t.speedMbps == null || t.speedMbps <= 0) return "";
-  if (t.totalBytes == null || t.downloadedBytes == null) return "";
-  const remain = (t.totalBytes - t.downloadedBytes) / (t.speedMbps * 1024 * 1024);
+function etaText(task: QueueTask): string {
+  if (task.stage !== "downloading" || task.speedMbps == null || task.speedMbps <= 0) return "";
+  if (task.totalBytes == null || task.downloadedBytes == null) return "";
+  const remain = (task.totalBytes - task.downloadedBytes) / (task.speedMbps * 1024 * 1024);
   if (remain <= 0) return "";
-  return `剩余 ${fmtDurationSec(remain)}`;
+  return t("queue.remaining", { time: fmtDurationSec(remain) });
 }
 
 // 终态任务耗时（createdAt → finishedAt）；非终态返回空串
-function durationText(t: QueueTask): string {
-  return fmtDuration(t.createdAt, t.finishedAt);
+function durationText(task: QueueTask): string {
+  return fmtDuration(task.createdAt, task.finishedAt);
 }
 
 // ---- 取消：乐观禁用，防止重复点击 ----
 const cancellingIds = reactive(new Set<number>());
-async function cancelTask(t: QueueTask) {
-  if (cancellingIds.has(t.id)) return;
-  cancellingIds.add(t.id);
+async function cancelTask(task: QueueTask) {
+  if (cancellingIds.has(task.id)) return;
+  cancellingIds.add(task.id);
   try {
-    await store.cancelTask(t.id);
+    await store.cancelTask(task.id);
   } catch {
     /* store 内已提示 */
   } finally {
-    cancellingIds.delete(t.id);
+    cancellingIds.delete(task.id);
   }
 }
 
 // ---- 重试：失败 / 已取消 均可重新入队（后端按 tool+version+distribution 去重） ----
-async function retry(t: QueueTask) {
+async function retry(task: QueueTask) {
   try {
     const r = await store.run<QueueEnqueueResult>("enqueue_install", {
-      name: t.tool,
-      version: t.version,
-      distribution: t.distribution ?? null,
+      name: task.tool,
+      version: task.version,
+      distribution: task.distribution ?? null,
     });
     if (r.reused) {
-      showMsg(`${t.tool} ${t.version} 已在队列中（任务 #${r.id}）`);
+      showMsg(t("toast.alreadyQueued", { tool: task.tool, version: task.version, id: r.id }));
     } else {
-      showMsg(`${t.tool} ${t.version} 已重新入队（任务 #${r.id}）`);
+      showMsg(t("toast.requeued", { tool: task.tool, version: task.version, id: r.id }));
     }
   } catch (e) {
-    showErr(`重试失败：${errMsg(e)}`);
+    showErr(t("toast.retryFailed", { msg: errMsg(e) }));
   }
 }
 
 // ---- 下载地址：折叠（单行省略）/ 展开 + 复制 ----
 const expandedUrls = reactive(new Set<number>());
-function toggleUrl(t: QueueTask) {
-  if (expandedUrls.has(t.id)) expandedUrls.delete(t.id);
-  else expandedUrls.add(t.id);
+function toggleUrl(task: QueueTask) {
+  if (expandedUrls.has(task.id)) expandedUrls.delete(task.id);
+  else expandedUrls.add(task.id);
 }
 async function copyUrl(url: string) {
   try {
     await navigator.clipboard.writeText(url);
-    showMsg("下载链接已复制");
+    showMsg(t("queue.urlCopied"));
   } catch {
-    showErr("复制失败，请手动选择复制");
+    showErr(t("queue.urlCopyFailed"));
   }
 }
 
@@ -147,119 +148,125 @@ function clearFinished() {
     <n-drawer-content closable>
       <template #header>
         <div class="queue-header">
-          <span class="queue-title">下载队列</span>
+          <span class="queue-title">{{ t("queue.title") }}</span>
           <span class="queue-count muted">
-            {{ app.queue.length > 0 ? `${app.queue.length} 个任务 · 进行中 ${runningCount}` : "暂无任务" }}
+            {{
+              app.queue.length > 0
+                ? t("queue.summary", { total: app.queue.length, running: runningCount })
+                : t("queue.empty")
+            }}
           </span>
           <div style="flex: 1" />
           <n-button v-if="runningCount > 0" size="tiny" quaternary type="error" @click="cancelAll">
-            全部取消
+            {{ t("queue.cancelAll") }}
           </n-button>
           <n-button v-if="hasFinished" size="tiny" quaternary @click="clearFinished">
-            清空已完成
+            {{ t("queue.clearFinished") }}
           </n-button>
         </div>
       </template>
 
       <div v-if="app.queue.length === 0" class="muted queue-empty">
-        暂无任务。在「工具管理」中选择版本并点击安装后，任务会出现在这里。
+        {{ t("queue.emptyHint") }}
       </div>
 
       <div v-else class="queue-list">
-        <div v-for="t in app.queue" :key="t.id" class="queue-item" :class="`is-${t.status}`">
+        <div v-for="task in app.queue" :key="task.id" class="queue-item" :class="`is-${task.status}`">
           <div class="queue-item-head">
-            <n-tag :type="statusType[t.status]" size="small" round>
-              {{ statusLabel(t) }}
+            <n-tag :type="statusType[task.status]" size="small" round>
+              {{ statusLabel(task) }}
             </n-tag>
             <span class="queue-tool">
-              {{ t.tool }} {{ t.version }}
-              <span v-if="t.distribution" class="mono muted">· {{ t.distribution }}</span>
+              {{ task.tool }} {{ task.version }}
+              <span v-if="task.distribution" class="mono muted">· {{ task.distribution }}</span>
             </span>
             <!-- 终态耗时（createdAt → finishedAt） -->
             <span
-              v-if="durationText(t)"
+              v-if="durationText(task)"
               class="queue-duration mono muted"
-              :title="`入队 ${fmtDateTime(t.createdAt)}`"
+              :title="t('queue.enqueuedAt', { time: fmtDateTime(task.createdAt) })"
             >
-              ⏱ {{ durationText(t) }}
+              ⏱ {{ durationText(task) }}
             </span>
             <div style="flex: 1" />
             <n-button
-              v-if="t.status === 'queued' || t.status === 'running'"
+              v-if="task.status === 'queued' || task.status === 'running'"
               size="tiny"
               quaternary
               type="error"
-              :loading="cancellingIds.has(t.id)"
-              :disabled="cancellingIds.has(t.id)"
-              @click="cancelTask(t)"
+              :loading="cancellingIds.has(task.id)"
+              :disabled="cancellingIds.has(task.id)"
+              @click="cancelTask(task)"
             >
-              {{ t.status === "running" ? "取消下载" : "取消" }}
+              {{ task.status === "running" ? t("queue.cancelDownload") : t("queue.cancel") }}
             </n-button>
             <n-button
-              v-if="t.status === 'failed' || t.status === 'cancelled'"
+              v-if="task.status === 'failed' || task.status === 'cancelled'"
               size="tiny"
               quaternary
-              @click="retry(t)"
+              @click="retry(task)"
             >
-              重试
+              {{ t("queue.retry") }}
             </n-button>
           </div>
 
-          <template v-if="t.status === 'running'">
+          <template v-if="task.status === 'running'">
             <!-- 下载中：真实进度条 + 百分比/速度；其余阶段（解析/校验/解压）：脉动条（indeterminate） -->
-            <div v-if="t.stage === 'downloading'" class="queue-progress-head">
+            <div v-if="task.stage === 'downloading'" class="queue-progress-head">
               <n-progress
                 type="line"
-                :percentage="Math.max(0, Math.min(100, t.percent))"
+                :percentage="Math.max(0, Math.min(100, task.percent))"
                 :height="6"
                 :show-indicator="false"
                 status="success"
               />
-              <span class="queue-progress-text mono">{{ progressText(t) }}</span>
+              <span class="queue-progress-text mono">{{ progressText(task) }}</span>
             </div>
             <div v-else class="queue-progress-head">
-              <div class="queue-indeterminate" role="progressbar" aria-label="任务执行中">
+              <div class="queue-indeterminate" role="progressbar" :aria-label="t('queue.runningAria')">
                 <div class="queue-indeterminate-bar" />
               </div>
               <span class="queue-progress-text mono">
-                {{ t.stage ? STAGE_TEXT[t.stage] : "执行中…" }}
+                {{ task.stage ? stageLabel(task.stage) : t("common.executingEllipsis") }}
               </span>
             </div>
             <!-- 下载中：已下载 / 总大小 + ETA（总大小未知时只显示已下载） -->
-            <div v-if="t.stage === 'downloading'" class="queue-size mono">
-              <template v-if="t.totalBytes != null">
-                {{ fmtBytes(t.downloadedBytes ?? 0) }} / {{ fmtBytes(t.totalBytes) }}
+            <div v-if="task.stage === 'downloading'" class="queue-size mono">
+              <template v-if="task.totalBytes != null">
+                {{ fmtBytes(task.downloadedBytes ?? 0) }} / {{ fmtBytes(task.totalBytes) }}
               </template>
-              <template v-else>已下载 {{ fmtBytes(t.downloadedBytes ?? 0) }}</template>
-              <span v-if="etaText(t)" class="queue-eta">· {{ etaText(t) }}</span>
+              <template v-else>
+                {{ t("queue.downloaded", { size: fmtBytes(task.downloadedBytes ?? 0) }) }}
+              </template>
+              <span v-if="etaText(task)" class="queue-eta">· {{ etaText(task) }}</span>
             </div>
             <!-- 下载中：实际下载地址（默认单行省略，可展开；支持一键复制） -->
-            <div v-if="t.stage === 'downloading' && t.url" class="queue-url-row">
+            <div v-if="task.stage === 'downloading' && task.url" class="queue-url-row">
               <a
                 class="queue-download-url mono"
-                :class="{ expanded: expandedUrls.has(t.id) }"
-                :href="t.url"
+                :class="{ expanded: expandedUrls.has(task.id) }"
+                :href="task.url"
                 target="_blank"
                 rel="noreferrer"
-                :title="t.url"
+                :title="task.url"
               >
                 <span class="dl-icon">🔗</span>
-                <span class="queue-url-text">{{ t.url }}</span>
+                <span class="queue-url-text">{{ task.url }}</span>
               </a>
-              <n-button size="tiny" quaternary class="queue-url-btn" @click="toggleUrl(t)">
-                {{ expandedUrls.has(t.id) ? "收起" : "展开" }}
+              <n-button size="tiny" quaternary class="queue-url-btn" @click="toggleUrl(task)">
+                {{ expandedUrls.has(task.id) ? t("common.collapse") : t("common.expand") }}
               </n-button>
-              <n-button size="tiny" quaternary class="queue-url-btn" @click="copyUrl(t.url)">
-                复制
+              <n-button size="tiny" quaternary class="queue-url-btn" @click="copyUrl(task.url)">
+                {{ t("common.copy") }}
               </n-button>
             </div>
           </template>
           <div
-            v-if="t.message"
+            v-if="task.message"
             class="queue-msg mono"
-            :class="{ 'is-error': t.status === 'failed' }"
+            :class="{ 'is-error': task.status === 'failed' }"
           >
-            {{ t.message }}
+            {{ task.message }}
           </div>
         </div>
       </div>

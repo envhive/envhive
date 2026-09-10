@@ -3,6 +3,7 @@
 // 每工具一行：名称 + 版本下拉（多发行商再加发行商下拉）+ 移除；「从全局克隆」一键带入当前全局版本
 // 版本下拉仅列出「已下载安装到本地」的版本（tool.installed），远程可下载版本不在此处展示。
 import { computed } from "vue";
+import { useI18n } from "vue-i18n";
 import { NButton, NSelect, NDropdown, type SelectOption } from "naive-ui";
 import { useApp } from "../store";
 import ToolIcon from "./ToolIcon.vue";
@@ -19,6 +20,7 @@ const emit = defineEmits<{
 }>();
 
 const app = useApp();
+const { t } = useI18n();
 
 function update(i: number, patch: Partial<ProjectToolVersion>) {
   emit("change", props.versions.map((v, idx) => (idx === i ? { ...v, ...patch } : v)));
@@ -92,7 +94,7 @@ function versionOptions(sdkName: string, current?: string) {
   if (!tool) return [];
   const opts: SelectOption[] = (tool.installed ?? []).map((v) => ({ label: v, value: v }));
   if (current && !opts.some((o) => o.value === current)) {
-    opts.unshift({ label: `${current}（未安装）`, value: current, disabled: true });
+    opts.unshift({ label: t("vcp.notInstalled", { version: current }), value: current, disabled: true });
   }
   return opts;
 }
@@ -106,16 +108,16 @@ const unknownRows = computed(() => props.versions.filter((v) => !app.tools.some(
 
 /** 候选工具的悬停提示（dropdown 不支持 slot label，用 native title 属性附在按钮上） */
 function addTitle(): string {
-  return addOptions.value.length === 0 ? "所有工具已加入组合" : "选择要添加的工具";
+  return addOptions.value.length === 0 ? t("vcp.addTitleAllAdded") : t("vcp.addTitleSelect");
 }
 </script>
 
 <template>
   <div class="vcp">
     <div class="vcp-head">
-      <span class="proxy-label">版本组合</span>
+      <span class="proxy-label">{{ t("vcp.title") }}</span>
       <div style="display: flex; gap: 6px">
-        <n-button size="small" quaternary @click="emit('clone-global')">从全局克隆</n-button>
+        <n-button size="small" quaternary @click="emit('clone-global')">{{ t("vcp.cloneGlobal") }}</n-button>
         <n-dropdown
           class="vcp-add"
           trigger="click"
@@ -124,13 +126,13 @@ function addTitle(): string {
           :disabled="addOptions.length === 0"
           @select="(key: string | number) => addTool(String(key))"
         >
-          <n-button size="small" quaternary :title="addTitle()">+ 添加工具</n-button>
+          <n-button size="small" quaternary :title="addTitle()">{{ t("vcp.addTool") }}</n-button>
         </n-dropdown>
       </div>
     </div>
 
     <p v-if="props.versions.length === 0" class="muted vcp-empty">
-      尚未选择任何工具—— 点击「从全局克隆」或「+ 添加工具」开始。
+      {{ t("vcp.empty") }}
     </p>
 
     <div v-else class="vcp-rows">
@@ -138,7 +140,7 @@ function addTitle(): string {
       <div v-for="(item, i) in unknownRows" :key="`u-${i}`" class="vcp-row">
         <span class="mono muted">{{ item.tool }}</span>
         <span class="mono">@{{ item.version }}</span>
-        <n-button size="tiny" quaternary @click="removeRow(i)">移除</n-button>
+        <n-button size="tiny" quaternary @click="removeRow(i)">{{ t("common.remove") }}</n-button>
       </div>
 
       <!-- 已知工具行 -->
@@ -153,7 +155,7 @@ function addTitle(): string {
           class="vcp-tool"
           :value="item.tool"
           :options="allToolOptions()"
-          placeholder="工具"
+          :placeholder="t('vcp.toolPlaceholder')"
           @update:value="(v: string) => onToolChange(i, v)"
         />
 
@@ -163,7 +165,7 @@ function addTitle(): string {
           class="vcp-select"
           :value="item.distribution ?? ''"
           :options="distOptions(item.tool)"
-          placeholder="发行商"
+          :placeholder="t('vcp.distPlaceholder')"
           @update:value="(d: string) => update(i, { distribution: d, version: '' })"
         />
 
@@ -173,12 +175,12 @@ function addTitle(): string {
           :value="item.version"
           :options="versionOptions(item.tool, item.version)"
           :disabled="installedOf(item.tool).length === 0"
-          :placeholder="installedOf(item.tool).length === 0 ? '无已安装版本' : '选择版本'"
+          :placeholder="installedOf(item.tool).length === 0 ? t('vcp.noInstalledVersions') : t('vcp.selectVersion')"
           filterable
           @update:value="(v: string) => update(i, { version: v })"
         />
 
-        <n-button size="tiny" quaternary @click="removeRow(i)">移除</n-button>
+        <n-button size="tiny" quaternary @click="removeRow(i)">{{ t("common.remove") }}</n-button>
       </div>
     </div>
   </div>

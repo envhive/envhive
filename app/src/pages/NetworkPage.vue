@@ -1,12 +1,14 @@
 <script setup lang="ts">
 // 镜像源管理 ——工具包镜像源一键切换 + 自定义镜像源
 import { ref } from "vue";
+import { useI18n } from "vue-i18n";
 import { NButton, NSelect, NInput, NTag, NCard } from "naive-ui";
 import { useApp, store } from "../store";
 import StatusChip from "../components/StatusChip.vue";
 import { REGISTRY_TOOLS, REGISTRY_TOOL_HINT } from "../types";
 
 const app = useApp();
+const { t } = useI18n();
 
 const regConflicts = () => app.conflicts.filter((c) => c.kind === "registry");
 
@@ -20,7 +22,7 @@ function toggleCustom(tool: string) {
 
 function presetOptions(tool: string) {
   return (app.presets[tool] ?? []).map((p) => ({
-    label: `${p.name}${p.isOfficial ? "（官方）" : ""}${p.isCustom ? "（自定义）" : ""}`,
+    label: `${p.name}${p.isOfficial ? t("network.officialSuffix") : ""}${p.isCustom ? t("network.customSuffix") : ""}`,
     value: p.name,
   }));
 }
@@ -38,9 +40,9 @@ function submitCustom(tool: string) {
 <template>
   <section class="section">
     <!-- ============ 镜像源一键切换 ============ -->
-    <n-card size="small" title="镜像源一键切换" class="section-card" :bordered="true">
+    <n-card size="small" :title="t('network.title')" class="section-card" :bordered="true">
       <p class="muted block-hint">
-        每行：工具+ 当前源地址 + 预设下拉 + 状态；可随时追加自定义镜像源，内置官方源自动保留。
+        {{ t("network.hint") }}
       </p>
 
       <div class="mirror-list">
@@ -52,10 +54,10 @@ function submitCustom(tool: string) {
               <template v-if="app.registry[tool]?.currentUrl">
                 {{ app.registry[tool]?.currentUrl }}
                 <StatusChip :tone="app.registry[tool]?.presetName ? 'ok' : 'info'">
-                  {{ app.registry[tool]?.presetName ? `✓ ${app.registry[tool]?.presetName}` : "自定义" }}
+                  {{ app.registry[tool]?.presetName ? `✓ ${app.registry[tool]?.presetName}` : t("network.custom") }}
                 </StatusChip>
               </template>
-              <span v-else class="muted">未配置</span>
+              <span v-else class="muted">{{ t("network.notConfigured") }}</span>
             </span>
 
             <n-select
@@ -63,7 +65,7 @@ function submitCustom(tool: string) {
               class="mirror-select"
               :value="(app.presets[tool] ?? []).find((p) => p.name === app.registry[tool]?.presetName)?.name ?? ''"
               :options="presetOptions(tool)"
-              :placeholder="(app.presets[tool] ?? []).length ? '选择预设…' : '无预设'"
+              :placeholder="(app.presets[tool] ?? []).length ? t('network.presetPlaceholder') : t('network.noPreset')"
               clearable
               @update:value="(v: string | null) => { if (v) void store.applyPreset(tool, v); }"
             />
@@ -75,7 +77,7 @@ function submitCustom(tool: string) {
               :bordered="false"
               class="mirror-conflict"
             >
-              ⚠ 基线不一致
+              {{ t("network.conflict") }}
               <n-button
                 size="tiny"
                 quaternary
@@ -83,7 +85,7 @@ function submitCustom(tool: string) {
                 style="margin-left: 4px"
                 @click="store.ackConflict(regConflicts().find((c) => c.tool === tool)!)"
               >
-                确认基线
+                {{ t("network.ackBaseline") }}
               </n-button>
             </n-tag>
           </div>
@@ -91,7 +93,7 @@ function submitCustom(tool: string) {
           <!-- 行 2：配置文件路径 -->
           <div class="mirror-meta">
             <span class="mirror-configfile">
-              配置文件：
+              {{ t("network.configFile") }}
               <span class="mono" :title="app.registry[tool]?.configFile ?? REGISTRY_TOOL_HINT[tool] ?? ''">
                 {{ app.registry[tool]?.configFile ?? REGISTRY_TOOL_HINT[tool] ?? "—" }}
               </span>
@@ -100,9 +102,9 @@ function submitCustom(tool: string) {
 
           <!-- 行 3：自定义源管理 -->
           <div class="mirror-custom">
-            <span class="mirror-custom-label">自定义源</span>
+            <span class="mirror-custom-label">{{ t("network.customLabel") }}</span>
             <span v-if="(app.presets[tool] ?? []).filter((p) => p.isCustom).length === 0" class="muted">
-              暂无，可添加自定义镜像源地址
+              {{ t("network.noCustom") }}
             </span>
             <template v-else>
               <span
@@ -117,7 +119,7 @@ function submitCustom(tool: string) {
                   size="tiny"
                   quaternary
                   type="error"
-                  :title="`删除 ${c.name}`"
+                  :title="t('network.deleteCustom', { name: c.name })"
                   @click="store.removeCustomPreset(tool, c.name)"
                 >
                   ✕
@@ -125,14 +127,14 @@ function submitCustom(tool: string) {
               </span>
             </template>
             <n-button size="tiny" quaternary @click="toggleCustom(tool)">
-              {{ customOpen[tool] ? "收起" : "＋ 添加自定义源" }}
+              {{ customOpen[tool] ? t("common.collapse") : t("network.addCustomToggle") }}
             </n-button>
 
             <div v-if="customOpen[tool]" class="mirror-custom-form">
               <n-input
                 size="small"
                 :value="draft[tool]?.name ?? ''"
-                placeholder="名称，如 my-registry"
+                :placeholder="t('network.namePlaceholder')"
                 style="width: 140px"
                 @update:value="(v: string) => (draft[tool] = { name: v, url: draft[tool]?.url ?? '' })"
               />
@@ -143,7 +145,7 @@ function submitCustom(tool: string) {
                 style="width: 220px"
                 @update:value="(v: string) => (draft[tool] = { name: draft[tool]?.name ?? '', url: v })"
               />
-              <n-button size="small" type="primary" @click="submitCustom(tool)">添加</n-button>
+              <n-button size="small" type="primary" @click="submitCustom(tool)">{{ t("common.add") }}</n-button>
             </div>
           </div>
         </div>

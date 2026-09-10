@@ -1,17 +1,31 @@
 <script setup lang="ts">
-// TopBar —— 顶栏内容：当前页面标题 + 全局状态标签
+// TopBar —— 顶栏内容：当前页面标题 + 语言切换 + 全局状态标签
 import { computed } from "vue";
-import { NTag, NIcon } from "naive-ui";
+import { useI18n } from "vue-i18n";
+import { NTag, NIcon, NButton, NDropdown } from "naive-ui";
+import { LanguageOutline } from "@vicons/ionicons5";
 import { useApp } from "../store";
 import { NAV_ITEMS } from "../types";
+import { LOCALES, currentLocale, setLocale } from "../i18n";
+import type { LocaleKey } from "../i18n";
 
 const app = useApp();
+const { t } = useI18n();
 
-// 当前页标题（从导航配置反查）
+// 当前页标题（从导航配置反查；t() 依赖 locale，语言切换后自动刷新）
 const pageTitle = computed(() => {
   const item = NAV_ITEMS.find((i) => i.key === app.page);
-  return item ? { label: item.label, icon: item.icon } : { label: "", icon: null };
+  return item ? { label: t(item.i18nKey), icon: item.icon } : { label: "", icon: null };
 });
+
+// 语言切换：label 用各语言自身写法，不随当前语言翻译
+const langOptions = LOCALES.map((l) => ({ label: l.label, key: l.key }));
+const currentLangLabel = computed(
+  () => LOCALES.find((l) => l.key === currentLocale.value)?.label ?? ""
+);
+function onLangSelect(key: string | number) {
+  setLocale(key as LocaleKey);
+}
 </script>
 
 <template>
@@ -26,8 +40,18 @@ const pageTitle = computed(() => {
     <div class="topbar-right">
       <!-- 环境徽标：仅异常时显示（存储不可写），常态隐藏 -->
       <n-tag v-if="app.bootstrap && !app.bootstrap.configWritable" type="error" round size="small">
-        ⚠ 存储不可写
+        ⚠ {{ t("topbar.storageReadonly") }}
       </n-tag>
+
+      <!-- 语言切换 -->
+      <n-dropdown trigger="click" :options="langOptions" @select="onLangSelect">
+        <n-button quaternary size="small">
+          <template #icon>
+            <n-icon><LanguageOutline /></n-icon>
+          </template>
+          {{ currentLangLabel }}
+        </n-button>
+      </n-dropdown>
     </div>
   </div>
 </template>

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 // 插件 · Lua 管理 —— 插件市场 + 已装插件（来源/发行商/编辑/禁用/删除）+ 抽屉式编辑器
 import { computed, ref } from "vue";
+import { useI18n } from "vue-i18n";
 import { NButton, NInput, NSelect, NCard, NDrawer, NDrawerContent, NSwitch, NTooltip } from "naive-ui";
 import { useApp, store, LUA_SAMPLE, showMsg } from "../store";
 import StatusChip from "../components/StatusChip.vue";
@@ -10,6 +11,7 @@ import type { PluginInfo, RemotePluginInfo } from "../types";
 import { fmtDateTime, relTime } from "../types";
 
 const app = useApp();
+const { t } = useI18n();
 const editorOpen = ref(false);
 /** 编辑模式：非空 = 编辑已有插件（{ name, provider }）；null = 新建 */
 const editing = ref<{ name: string; provider: string } | null>(null);
@@ -32,15 +34,17 @@ const registryOptions = computed(() =>
   app.registryEntries.map((e) => ({ label: e.name, value: e.url }))
 );
 
-/** 来源徽标元数据（内置插件已移除，仅剩 market / local） */
-const SRC_META: Record<string, { tone: ChipTone; label: string }> = {
-  market: { tone: "info", label: "市场" },
-  local: { tone: "muted", label: "本地" },
+/** 来源徽标元数据（内置插件已移除，仅剩 market / local）；用函数取词以随语言切换刷新 */
+const srcMeta = (s: string) => {
+  const map: Record<string, { tone: ChipTone; label: string }> = {
+    market: { tone: "info", label: t("plugins.source.market") },
+    local: { tone: "muted", label: t("plugins.source.local") },
+  };
+  return map[s] ?? { tone: "muted" as ChipTone, label: s };
 };
-const srcMeta = (s: string) => SRC_META[s] ?? { tone: "muted" as ChipTone, label: s };
 
 /** 插件定义文件类型徽标（全部为 Lua 脚本） */
-const providerMeta = (_p: string) => ({ tone: "accent" as ChipTone, label: "Lua 脚本" });
+const providerMeta = (_p: string) => ({ tone: "accent" as ChipTone, label: t("plugins.provider.lua") });
 
 /** 压缩插件路径显示：把用户目录段替换为 `~`（跨平台兼容 Windows `\` / Unix `/`） */
 function shortPath(p: string): string {
@@ -89,7 +93,7 @@ function doToggle(p: PluginInfo, enable: boolean) {
 <template>
   <section class="section">
     <!-- ============ 插件市场 ============ -->
-    <n-card size="small" title="插件市场（远程仓库）" class="section-card" :bordered="true">
+    <n-card size="small" :title="t('plugins.marketTitle')" class="section-card" :bordered="true">
       <template #header-extra>
         <n-select
           v-if="app.registryEntries.length > 1"
@@ -104,12 +108,12 @@ function doToggle(p: PluginInfo, enable: boolean) {
           {{ app.registryEntries[0].name }}
         </span>
       </template>
-      <p v-if="app.remotePluginsLoading" class="muted">正在获取插件列表…</p>
+      <p v-if="app.remotePluginsLoading" class="muted">{{ t("plugins.loading") }}</p>
       <p v-else-if="app.remotePluginsError" class="muted reg-err">
-        获取插件列表失败：{{ app.remotePluginsError }}
+        {{ t("plugins.loadFailed", { msg: app.remotePluginsError }) }}
       </p>
       <p v-else-if="app.remotePlugins.length === 0" class="muted">
-        该仓库暂无可用插件（可在设置中配置多个插件仓库地址）。
+        {{ t("plugins.emptyMarket") }}
       </p>
       <div v-else class="reg-grid">
         <div v-for="(p, i) in app.remotePlugins" :key="p.name" class="card reg-card">
@@ -117,22 +121,24 @@ function doToggle(p: PluginInfo, enable: boolean) {
             <ToolIcon :icon="p.icon" :index="i" :size="18" :name="p.name" />
             <span class="card-name">{{ p.name }}</span>
             <span class="mono">v{{ p.version }}</span>
-            <StatusChip v-if="!localPlugin(p.name)" tone="info">未安装</StatusChip>
-            <StatusChip v-else-if="hasUpdate(p)" tone="warn" title="本地已装版本与市场版本不同，可一键更新">可更新</StatusChip>
-            <StatusChip v-else tone="ok">已安装 ✓</StatusChip>
+            <StatusChip v-if="!localPlugin(p.name)" tone="info">{{ t("plugins.notInstalled") }}</StatusChip>
+            <StatusChip v-else-if="hasUpdate(p)" tone="warn" :title="t('plugins.updatableTip')">{{ t("plugins.updatable") }}</StatusChip>
+            <StatusChip v-else tone="ok">{{ t("plugins.installedCheck") }}</StatusChip>
           </div>
-          <p class="muted reg-desc">{{ p.description || "（无描述）" }}</p>
+          <p class="muted reg-desc">{{ p.description || t("common.noDescription") }}</p>
           <div class="card-foot">
             <n-button v-if="!localPlugin(p.name)" type="primary" size="small" @click="store.installRemotePlugin(p)">
-              安装
+              {{ t("common.install") }}
             </n-button>
             <n-button v-else-if="hasUpdate(p)" type="primary" size="small" @click="store.installRemotePlugin(p)">
-              更新到 v{{ p.version }}
+              {{ t("plugins.updateTo", { version: p.version }) }}
             </n-button>
             <span v-else class="muted">
-              已安装
-              <template v-if="localPlugin(p.name)?.version"> v{{ localPlugin(p.name)!.version }}</template>
-              ，可在工具列表中使用
+              {{
+                localPlugin(p.name)?.version
+                  ? t("plugins.installedWithVersion", { version: localPlugin(p.name)!.version })
+                  : t("plugins.installedPlain")
+              }}
             </span>
           </div>
         </div>
@@ -140,14 +146,13 @@ function doToggle(p: PluginInfo, enable: boolean) {
     </n-card>
 
     <!-- ============ 已安装插件 ============ -->
-    <n-card size="small" title="已安装插件" class="section-card" :bordered="true">
+    <n-card size="small" :title="t('plugins.installedTitle')" class="section-card" :bordered="true">
       <template #header-extra>
-        <n-button size="small" quaternary style="margin-right: 8px" @click="store.loadP2()">刷新</n-button>
-        <n-button type="primary" size="small" @click="openNew">新建插件</n-button>
+        <n-button size="small" quaternary style="margin-right: 8px" @click="store.loadP2()">{{ t("common.refresh") }}</n-button>
+        <n-button type="primary" size="small" @click="openNew">{{ t("plugins.newPlugin") }}</n-button>
       </template>
       <p v-if="app.plugins.length === 0" class="muted">
-        暂无插件 —— 应用不再内置插件，全部从 Git 仓库（上方「插件市场」）下载安装；
-        启动时已自动同步，可点击右上角「刷新」或直接安装市场中的插件。
+        {{ t("plugins.emptyInstalled") }}
       </p>
       <div v-else class="installed-plugin-list">
         <div v-for="(p, i) in app.plugins" :key="p.name" class="installed-plugin-row" :class="{ 'row-disabled': !p.enabled }">
@@ -162,7 +167,7 @@ function doToggle(p: PluginInfo, enable: boolean) {
             <div class="row-ops">
               <n-tooltip placement="top">
                 <template #trigger>
-                  <n-button size="tiny" quaternary @click="store.openPluginDir(p.name)">打开目录</n-button>
+                  <n-button size="tiny" quaternary @click="store.openPluginDir(p.name)">{{ t("common.openDir") }}</n-button>
                 </template>
                 {{ p.path }}
               </n-tooltip>
@@ -170,10 +175,10 @@ function doToggle(p: PluginInfo, enable: boolean) {
                 size="tiny"
                 quaternary
                 :disabled="!p.enabled"
-                :title="p.enabled ? '编辑脚本（校验后原子写回）' : '已禁用插件不可编辑，请先启用'"
+                :title="p.enabled ? t('plugins.editTitleEnabled') : t('plugins.editTitleDisabled')"
                 @click="openEdit(p)"
               >
-                编辑
+                {{ t("common.edit") }}
               </n-button>
               <n-tooltip placement="top" :show-arrow="false">
                 <template #trigger>
@@ -185,16 +190,16 @@ function doToggle(p: PluginInfo, enable: boolean) {
                     @update:value="(v: boolean) => doToggle(p, v)"
                   />
                 </template>
-                {{ p.enabled ? "禁用插件" : "启用插件" }}
+                {{ p.enabled ? t("plugins.toggleDisable") : t("plugins.toggleEnable") }}
               </n-tooltip>
               <n-button
                 size="tiny"
                 quaternary
                 type="error"
-                :title="'删除插件 ' + p.name + '（仅删定义，已装版本保留）'"
+                :title="t('plugins.deleteTitle', { name: p.name })"
                 @click="store.deletePlugin(p.name, p.display)"
               >
-                删除
+                {{ t("common.delete") }}
               </n-button>
             </div>
           </div>
@@ -203,10 +208,10 @@ function doToggle(p: PluginInfo, enable: boolean) {
           <div class="row-meta">
             <StatusChip :tone="srcMeta(p.source).tone">{{ srcMeta(p.source).label }}</StatusChip>
             <StatusChip :tone="providerMeta(p.provider).tone">{{ providerMeta(p.provider).label }}</StatusChip>
-            <StatusChip :tone="p.enabled ? 'ok' : 'warn'">{{ p.enabled ? "启用" : "已禁用" }}</StatusChip>
+            <StatusChip :tone="p.enabled ? 'ok' : 'warn'">{{ p.enabled ? t("plugins.enabled") : t("plugins.disabled") }}</StatusChip>
             <n-tooltip v-if="p.distributions.length > 0" placement="top">
               <template #trigger>
-                <StatusChip tone="info">{{ p.distributions.length }} 个发行商</StatusChip>
+                <StatusChip tone="info">{{ t("plugins.distributionsCount", { count: p.distributions.length }) }}</StatusChip>
               </template>
               {{ p.distributions.map((d) => d.display).join(" · ") }}
             </n-tooltip>
@@ -216,10 +221,10 @@ function doToggle(p: PluginInfo, enable: boolean) {
               <template #trigger>
                 <span class="meta-text">
                   <template v-if="p.installedVersions.length > 0">
-                    已下载 {{ p.installedVersions.length }} 个版本
+                    {{ t("plugins.downloadedVersions", { count: p.installedVersions.length }) }}
                   </template>
                   <template v-else>
-                    未下载
+                    {{ t("plugins.notDownloaded") }}
                   </template>
                 </span>
               </template>
@@ -229,7 +234,7 @@ function doToggle(p: PluginInfo, enable: boolean) {
               <span class="meta-sep">·</span>
               <n-tooltip placement="top">
                 <template #trigger>
-                  <span class="meta-text">更新于 {{ relTime(p.updatedAt) }}</span>
+                  <span class="meta-text">{{ t("plugins.updatedAt", { time: relTime(p.updatedAt) }) }}</span>
                 </template>
                 {{ fmtDateTime(p.updatedAt) }}
               </n-tooltip>
@@ -246,25 +251,25 @@ function doToggle(p: PluginInfo, enable: boolean) {
         </div>
       </div>
       <p v-if="luaPlugins().length > 0" class="muted lua-dir-hint">
-        Lua 插件目录：~/.envhive/plugins/&lt;name&gt;/plugin.lua（可直接修改文件）
+        {{ t("plugins.luaDirHint") }}
       </p>
     </n-card>
 
     <!-- ============ 抽屉式编辑器 ============ -->
     <n-drawer v-model:show="editorOpen" :width="560" placement="right">
-      <n-drawer-content :title="editing ? `编辑插件：${editing.name}` : '新建 Lua 插件'" closable>
+      <n-drawer-content :title="editing ? t('plugins.editorEditTitle', { name: editing.name }) : t('plugins.editorNewTitle')" closable>
         <div class="vcp-row" style="margin-bottom: 8px">
           <n-input
             v-model:value="app.luaName"
-            placeholder="插件名（如 python）"
+            :placeholder="t('plugins.pluginNamePlaceholder')"
             style="flex: 1"
             :disabled="!!editing"
           />
           <n-tooltip v-if="editing" placement="top">
             <template #trigger>
-              <StatusChip tone="accent">Lua 脚本</StatusChip>
+              <StatusChip tone="accent">{{ t("plugins.provider.lua") }}</StatusChip>
             </template>
-            可编辑，保存时校验后原子写回
+            {{ t("plugins.luaEditableTip") }}
           </n-tooltip>
         </div>
 
@@ -278,20 +283,18 @@ function doToggle(p: PluginInfo, enable: boolean) {
         />
 
         <p class="muted lua-hint">
-          生命周期 hook：available(ctx) / pre_install(ctx) / post_install(ctx) / env_keys(ctx) / pre_uninstall(ctx)；
-          内置模块 http.get（NETWORK_ALLOW 白名单）、json、archiver.extract、file（仅限 ~/.envhive 与临时目录）、
-          versions.parse（SDKMAN 风格标识符解析）；插件 lib/ 子目录可 require 私有模块。
+          {{ t("plugins.luaHint") }}
         </p>
 
         <template #footer>
           <div class="drawer-foot">
             <n-button
-              @click="showMsg(app.luaScript.trim() ? '脚本非空，可保存（完整 dry-run 校验待后端 plugin_validate 接入）' : '脚本为空')"
+              @click="showMsg(app.luaScript.trim() ? t('plugins.dryRunNonEmpty') : t('plugins.dryRunEmpty'))"
             >
-              测试运行（dry-run）
+              {{ t("plugins.dryRun") }}
             </n-button>
             <n-button type="primary" @click="doSave">
-              {{ editing ? "保存更改" : "保存插件" }}
+              {{ editing ? t("plugins.saveChanges") : t("plugins.savePlugin") }}
             </n-button>
           </div>
         </template>
